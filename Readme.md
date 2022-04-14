@@ -37,6 +37,8 @@ Required ENV variables:
 Log a text message:
 
 ```javascript
+const { logger } = require('@finhay/winston-cw-logger');
+
 logger.info("This is test message");
 ```
 
