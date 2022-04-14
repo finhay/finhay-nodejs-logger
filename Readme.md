@@ -16,8 +16,9 @@ Process Flow:
 Add `npm.pkg.github.com` registry by create a file and named `.npmrc`:
 
 ```
-//npm.pkg.github.com/:_authToken=YOUR_GITHUB_TOKEN
-registry=https://npm.pkg.github.com
+@finhay:registry=https://npm.pkg.github.com
+//npm.pkg.github.com/:_authToken=GITHUB_PERSONAL_TOKEN
+registry=https://registry.npmjs.org/
 ```
 
 ```javascript
