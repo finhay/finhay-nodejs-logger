@@ -1,0 +1,17 @@
+{
+  "name": "@finhay/winston-cw-logger",
+  "repository": "git://github.com/finhay/cw-logger.git",
+  "version": "0.0.1",
+  "description": "This package will ship winston log to AWS CloudWatch, also you should config for centralized logging (stream log to OpenSearch, etc...) ",
+  "main": "src/index.js",
+  "scripts": {
+    "test": "echo \"Error: no test specified\" && exit 1"
+  },
+  "author": "sontq00787",
+  "license": "ISC",
+  "dependencies": {
+    "cls-rtracer": "^2.6.0",
+    "winston": "^3.7.2",
+    "winston-aws-cloudwatch": "^3.0.0"
+  }
+}
