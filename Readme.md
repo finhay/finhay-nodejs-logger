@@ -1,16 +1,3 @@
-## Introdution
-
-### Main Idea
-
-Process Flow:
-
-- Individual services will generate logs using **winston** and transport to AWS CloudWatch using **winston-aws-cloudwatch**.
-- **Cls-rtracer** will be used for generating unique ID for logs for every request.
-- CloudWatch will Stream the logs to AWS OpenSearch (Successor to Elastic Search Service).
-- Logs will be viewed and queried using openSearch Dashboard (Kibana).
-- Archive log to S3 each day from CloudWatch.
-  ![Flow](Flow.png)
-
 ## Installation
 
 Add `npm.pkg.github.com` registry by create a file and named `.npmrc`:
@@ -25,19 +12,12 @@ registry=https://registry.npmjs.org/
 npm i @finhay/winston-cw-logger
 ```
 
-Required ENV variables:
-
-- LOG_GROUP_NAME: group name (default "unnamed-log-group")
-- CW_AWS_ACCESS_KEY_ID: access key id (have access to cloudwatch)
-- CW_AWS_SECRET_ACCESS_KEY: secret access key (have access to cloudwatch)
-- AWS_REGION: default "ap-southeast-1"
-
 ## Usage:
 
 Log a text message:
 
 ```javascript
-const { logger } = require('@finhay/winston-cw-logger');
+const { logger } = require("@finhay/winston-cw-logger");
 
 logger.info("This is test message");
 ```

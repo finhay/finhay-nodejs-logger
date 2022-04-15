@@ -13,8 +13,8 @@ const rTracerFormat = printf((info) => {
   //   }
 
   return rid
-    ? `${info.timestamp} [request-id:${rid}]: ${info.message}`
-    : `${info.timestamp}: ${info.message}`;
+    ? `${info.timestamp} ${info.level} [request-id:${rid}]: ${info.message}`
+    : `${info.timestamp} ${info.level}: ${info.message}`;
 });
 
 //creating the logger

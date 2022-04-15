@@ -1,3 +1,3 @@
-const logger = require("./logging");
+const logger = require("./SimpleLogger");
 
 module.exports = logger;
