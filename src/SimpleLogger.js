@@ -6,6 +6,10 @@ const { combine, timestamp, printf } = format;
 const rTracerFormat = printf((info) => {
   const rid = rTracer.id();
 
+  if (typeof info.message === "object") {
+    info.message = JSON.stringify(info.message, null, 3);
+  }
+
   return rid
     ? `${info.timestamp} ${info.level} [request-id:${rid}]: ${info.message}`
     : `${info.timestamp} ${info.level}: ${info.message}`;
