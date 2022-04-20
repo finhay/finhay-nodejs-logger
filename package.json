@@ -1,7 +1,7 @@
 {
   "name": "@finhay/winston-cw-logger",
   "repository": "git://github.com/finhay/cw-logger.git",
-  "version": "0.0.2",
+  "version": "0.0.3",
   "description": "Custom logger with traceid ",
   "main": "src/index.js",
   "scripts": {
