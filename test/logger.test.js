@@ -619,3 +619,11 @@ test("invalid caller field is not overridden by the value derived from the error
   assert.equal("http_status_code" in entry, false);
   assert.equal(entry.http_status_code_invalid, "unknown");
 });
+
+test("assignments with whitespace around = are redacted", () => {
+  const { redactSecretsInText } = require("../src");
+  assert.equal(
+    redactSecretsInText('cfg password = "secret" token\t=\tabc user = "u" pin=[1234]'),
+    'cfg password = "[REDACTED]" token\t=\t[REDACTED] user = "u" pin=[REDACTED]'
+  );
+});

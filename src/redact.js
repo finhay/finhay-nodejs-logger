@@ -125,10 +125,11 @@ function createTextRedactor(isSensitiveKey) {
   // (vd a=1;token=x hoặc note: 'password: x') sẽ nuốt mất cặp nhạy cảm phía sau. Ở đây chỉ
   // tiêu thụ giá trị khi key nhạy cảm; với key thường, lần quét sau bắt đầu ngay sau "key=".
   const pairScanners = [
-    // Query string / form / config: key=value | key="value" | key='value'
-    // (giá trị trần tới &, khoảng trắng, # hoặc dấu nháy)
+    // Query string / form / config: key=value | key = "value" | key='value'
+    // (cho phép khoảng trắng quanh "=" nhưng không qua dòng; giá trị trần tới &,
+    // khoảng trắng, # hoặc dấu nháy)
     {
-      re: new RegExp(`(^|[?&;\\s,{(\\['"])(${KEY})=`, "g"),
+      re: new RegExp(`(^|[?&;\\s,{(\\['"])(${KEY})[ \\t]*=[ \\t]*`, "g"),
       read: (text, start) => readValue(text, start, "&#\"'", false),
       render: renderValue,
     },
@@ -235,6 +236,8 @@ function scanEscapedQuoted(text, start) {
 }
 
 function readValue(text, start, stops, bareStart) {
+  // Đã được mẫu khác che rồi thì bỏ qua để không che chồng
+  if (text.startsWith(REDACTED, start)) return start;
   if (isQuote(text.charAt(start))) return scanQuoted(text, start);
   if (isEscapedQuote(text, start)) return scanEscapedQuoted(text, start);
   return scanUntil(text, start, stops, bareStart);
