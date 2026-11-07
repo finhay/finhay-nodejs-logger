@@ -118,7 +118,7 @@ function createTextRedactor(isSensitiveKey) {
   // tiêu thụ giá trị khi key nhạy cảm; với key thường, lần quét sau bắt đầu ngay sau "key=".
   // Thứ tự: JSON trước, để các dạng key=value / key: value không cắt ngang chuỗi JSON
   const pairScanners = [
-    // JSON trong chuỗi: "key": "..." | số | {...} | [...]. Quét như các dạng trên để một cặp
+    // JSON trong chuỗi: "key": "..." | số | {...} | [...]. Quét như các dạng bên dưới để một cặp
     // key thường (key JSON có thể chứa khoảng trắng...) không nuốt mất cặp nhạy cảm phía sau.
     // Chuỗi/object chưa đóng (bị cắt độ dài) được che tới hết.
     {
