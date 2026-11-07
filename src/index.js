@@ -275,7 +275,14 @@ function createLogger(options) {
         service,
       };
       if (environment) fallback.environment = environment;
-      fallback.message = `[finhay-logger] failed to render log: ${e && e.message}`;
+      // Thông báo lỗi có thể chứa dữ liệu từ info: che và cắt như mọi field văn bản
+      let detail = "";
+      try {
+        detail = finalize(String(e && e.message), maxMessageBytes, scrub);
+      } catch (inner) {
+        detail = "unknown error";
+      }
+      fallback.message = `[finhay-logger] failed to render log: ${detail}`;
       return fallback;
     }
   }

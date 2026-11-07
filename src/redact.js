@@ -112,17 +112,6 @@ function createTextRedactor(isSensitiveKey) {
       new RegExp(`(^|[\\r\\n])([ \\t]*)(${KEY})[ \\t]*:[ \\t]*([^\\r\\n]+)`, "g"),
       (m, pre, indent, key) => (isSensitiveKey(key) ? `${pre}${indent}${key}: ${REDACTED}` : m),
     ],
-    // JSON trong chuỗi: "key": "..." | số. Chuỗi chưa đóng (bị cắt độ dài, kể cả cắt ngay
-    // sau một dấu \) được che tới hết.
-    [
-      new RegExp(`"(${JSON_KEY})"(\\s*:\\s*)("(?:[^"\\\\]|\\\\.)*(?:"|\\\\?$)|-?\\d+(?:\\.\\d+)?)`, "g"),
-      (m, key, sep) => (isSensitiveKey(key) ? `"${key}"${sep}"${REDACTED}"` : m),
-    ],
-    // JSON đã escape một lần: \"key\":\"...\"
-    [
-      new RegExp(`\\\\"(${JSON_KEY})\\\\"(\\s*:\\s*)(\\\\"(?:[^\\\\]|\\\\[^"])*(?:\\\\"|\\\\?$)|-?\\d+)`, "g"),
-      (m, key, sep) => (isSensitiveKey(key) ? `\\"${key}\\"${sep}\\"${REDACTED}\\"` : m),
-    ],
   ];
   // Hai dạng dưới không dùng String.replace: một cặp key không nhạy cảm có giá trị dài
   // (vd a=1;token=x hoặc note: 'password: x') sẽ nuốt mất cặp nhạy cảm phía sau. Ở đây chỉ
@@ -142,16 +131,28 @@ function createTextRedactor(isSensitiveKey) {
       read: (text, start) => readValue(text, start, ",'\"}]"),
       render: renderValue,
     },
-    // JSON có giá trị là object/mảng: "password": {...} | "token": [...]
+    // JSON trong chuỗi: "key": "..." | số | {...} | [...]. Quét như các dạng trên để một cặp
+    // key thường (key JSON có thể chứa khoảng trắng...) không nuốt mất cặp nhạy cảm phía sau.
+    // Chuỗi/object chưa đóng (bị cắt độ dài) được che tới hết.
     {
-      re: new RegExp(`(")(${JSON_KEY})"\\s*:\\s*(?=[\\[{])`, "g"),
-      read: (text, start) => scanContainer(text, start, false),
+      re: new RegExp(`(")(${JSON_KEY})"\\s*:\\s*(?=["\\[{\\-\\d])`, "g"),
+      read: (text, start) => {
+        const ch = text.charAt(start);
+        if (ch === '"') return scanQuoted(text, start);
+        if (ch === "{" || ch === "[") return scanContainer(text, start, false);
+        return scanNumber(text, start);
+      },
       render: () => `"${REDACTED}"`,
     },
-    // Như trên nhưng JSON đã escape một lần: \"password\": {...}
+    // Như trên nhưng JSON đã escape một lần: \"key\":\"...\" | \"key\": {...}
     {
-      re: new RegExp(`(\\\\")(${JSON_KEY})\\\\"\\s*:\\s*(?=[\\[{])`, "g"),
-      read: (text, start) => scanContainer(text, start, true),
+      re: new RegExp(`(\\\\")(${JSON_KEY})\\\\"\\s*:\\s*(?=\\\\"|[\\[{\\-\\d])`, "g"),
+      read: (text, start) => {
+        const ch = text.charAt(start);
+        if (ch === "\\") return scanEscapedQuoted(text, start);
+        if (ch === "{" || ch === "[") return scanContainer(text, start, true);
+        return scanNumber(text, start);
+      },
       render: () => `\\"${REDACTED}\\"`,
     },
   ];
@@ -281,6 +282,12 @@ function scanContainer(text, start, escaped) {
     i++;
   }
   return text.length;
+}
+
+function scanNumber(text, start) {
+  let end = start;
+  while (end < text.length && /[-+0-9.eE]/.test(text.charAt(end))) end++;
+  return end;
 }
 
 function readValue(text, start, stops) {

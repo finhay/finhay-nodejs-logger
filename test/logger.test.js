@@ -697,3 +697,12 @@ test("throwing error getters do not escape the logger", async () => {
   const hostile = new Proxy(new Error("p"), { get(target, key) { if (key === "stack" || key === "message") return Reflect.get(target, key); throw new Error("trap"); } });
   await one((l) => assert.doesNotThrow(() => l.error(hostile)));
 });
+
+test("a broad non-sensitive JSON key does not hide a sensitive pair", () => {
+  const { redactSecretsInText } = require("../src");
+  assert.equal(
+    redactSecretsInText('Invalid "user name": "{"password":"s"}"'),
+    'Invalid "user name": "{"password":"[REDACTED]"}"'
+  );
+  assert.equal(redactSecretsInText('{"note":"x","otp":123456,"a":1.5e3}'), '{"note":"x","otp":"[REDACTED]","a":1.5e3}');
+});
