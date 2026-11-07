@@ -129,14 +129,13 @@ function createTextRedactor(isSensitiveKey) {
     // (giá trị trần tới &, khoảng trắng, # hoặc dấu nháy)
     {
       re: new RegExp(`(^|[?&;\\s,{(\\['"])(${KEY})=`, "g"),
-      read: (text, start) => (isQuote(text.charAt(start)) ? scanQuoted(text, start) : scanUntil(text, start, "&#\"'")),
+      read: (text, start) => readValue(text, start, "&#\"'", false),
       render: renderValue,
     },
     // Kiểu util.inspect / YAML trong câu: key: 'value' | key: "value" | key: value
     {
       re: new RegExp(`(^|[\\s{,(\\['"])(${KEY})\\s*:\\s*`, "g"),
-      read: (text, start) =>
-        isQuote(text.charAt(start)) ? scanQuoted(text, start) : scanUntil(text, start, ",'\"}][", true),
+      read: (text, start) => readValue(text, start, ",'\"}][", true),
       render: renderValue,
     },
   ];
@@ -203,10 +202,32 @@ function scanQuoted(text, start) {
   return text.length;
 }
 
-// Giá trị có nháy thì giữ nháy quanh [REDACTED]
+// Nháy đã escape (\" hoặc \'), gặp khi chuỗi nằm trong JSON đã serialize
+function isEscapedQuote(text, start) {
+  return text.charAt(start) === "\\" && isQuote(text.charAt(start + 1));
+}
+
+// Vị trí ngay sau cặp nháy escape đóng cùng loại; không đóng thì tới hết chuỗi
+function scanEscapedQuoted(text, start) {
+  const close = text.indexOf(`\\${text.charAt(start + 1)}`, start + 2);
+  return close === -1 ? text.length : close + 2;
+}
+
+function readValue(text, start, stops, bareStart) {
+  if (isQuote(text.charAt(start))) return scanQuoted(text, start);
+  if (isEscapedQuote(text, start)) return scanEscapedQuoted(text, start);
+  return scanUntil(text, start, stops, bareStart);
+}
+
+// Giá trị có nháy (kể cả nháy escape) thì giữ nháy quanh [REDACTED]
 function renderValue(text, start) {
   const ch = text.charAt(start);
-  return isQuote(ch) ? `${ch}${REDACTED}${ch}` : REDACTED;
+  if (isQuote(ch)) return `${ch}${REDACTED}${ch}`;
+  if (isEscapedQuote(text, start)) {
+    const quote = text.slice(start, start + 2);
+    return `${quote}${REDACTED}${quote}`;
+  }
+  return REDACTED;
 }
 
 const redactSecretsInText = createTextRedactor(createKeyMatcher());

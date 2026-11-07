@@ -576,3 +576,11 @@ test("line fitting continues until the record fits", async () => {
   assert.ok(Buffer.byteLength(ctx.lines[0]) <= 16000, `line is ${Buffer.byteLength(ctx.lines[0])} bytes`);
   assert.ok(validate(JSON.parse(ctx.lines[0])), JSON.stringify(validate.errors));
 });
+
+test("quoted values inside serialized meta (escaped quotes) are redacted", async () => {
+  const entry = await one((l) => l.info("m", { note: `cfg password="x y" pin: "1234" token='a b' user="u"` }));
+  const note = JSON.parse(entry.message.slice(2)).note;
+  assert.equal(note, `cfg password="[REDACTED]" pin: "[REDACTED]" token='[REDACTED]' user="u"`);
+  const { redactSecretsInText } = require("../src");
+  assert.equal(redactSecretsInText('x password=\\"unterminated sec'), 'x password=\\"[REDACTED]\\"');
+});
