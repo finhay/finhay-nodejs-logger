@@ -509,3 +509,16 @@ test("whole JSON line stays under the line limit", async () => {
   assert.ok(validate(entry), JSON.stringify(validate.errors));
   assert.match(entry.error_stack, /^Error: line/);
 });
+
+test("concatenated key names are sensitive", async () => {
+  const entry = await one((l) => l.info('q apikey=1&accesstoken=2&newpassword=3&x=4 {"clientsecret":"s","a":1}'));
+  assert.equal(entry.message, 'q apikey=[REDACTED]&accesstoken=[REDACTED]&newpassword=[REDACTED]&x=4 {"clientsecret":"[REDACTED]","a":1}');
+  const meta = await one((l) => l.info("m", { apikey: "1", clientsecret: "2", sessionid: "3", spin: "ok" }));
+  assert.equal(meta.message, 'm {"apikey":"[REDACTED]","clientsecret":"[REDACTED]","sessionid":"[REDACTED]","spin":"ok"}');
+});
+
+test("a non-sensitive pair does not hide a sensitive pair after it", async () => {
+  assert.equal((await one((l) => l.info("a=1;token=x"))).message, "a=1;token=[REDACTED]");
+  assert.equal((await one((l) => l.info("a=1,password=x b=2"))).message, "a=1,password=[REDACTED] b=2");
+  assert.equal((await one((l) => l.info("note: 'password: x', user: 'a'"))).message, "note: 'password: [REDACTED]', user: 'a'");
+});

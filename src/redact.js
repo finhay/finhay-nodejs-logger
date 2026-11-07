@@ -40,6 +40,28 @@ const SENSITIVE_LAST_PAIRS = new Set([
   "sessionid",
 ]);
 
+// Hậu tố đủ dài để so trên tên key đã ghép liền (apikey, accesstoken, newpassword,
+// clientsecret...) mà ít khớp nhầm; từ ngắn (pin, otp, pwd...) chỉ so theo ranh giới từ.
+const SENSITIVE_JOINED_SUFFIXES = [
+  "password",
+  "passwd",
+  "passcode",
+  "secret",
+  "token",
+  "cookie",
+  "authorization",
+  "apikey",
+  "privatekey",
+  "secretkey",
+  "accesskey",
+  "biometrickey",
+  "pincode",
+  "otpcode",
+  "cardnumber",
+  "codeverifier",
+  "sessionid",
+];
+
 const PHONE_KEY = /phone|mobile/i;
 
 function keyWords(key) {
@@ -62,7 +84,12 @@ function createKeyMatcher(extraKeys) {
     if (SENSITIVE_LAST_WORDS.has(last)) return true;
     if (words.indexOf("password") !== -1 || words.indexOf("passwd") !== -1) return true;
     if (words.length > 1 && SENSITIVE_LAST_PAIRS.has(words[words.length - 2] + last)) return true;
-    return extra.size > 0 && (extra.has(words.join("")) || extra.has(last));
+    const joined = words.join("");
+    if (joined.indexOf("password") !== -1 || joined.indexOf("passwd") !== -1) return true;
+    for (const suffix of SENSITIVE_JOINED_SUFFIXES) {
+      if (joined.length >= suffix.length && joined.slice(-suffix.length) === suffix) return true;
+    }
+    return extra.size > 0 && (extra.has(joined) || extra.has(last));
   };
 }
 
@@ -92,18 +119,44 @@ function createTextRedactor(isSensitiveKey) {
       new RegExp(`\\\\"(${KEY})\\\\"(\\s*:\\s*)(\\\\"(?:[^\\\\]|\\\\[^"])*\\\\"|-?\\d+)`, "g"),
       (m, key, sep) => (isSensitiveKey(key) ? `\\"${key}\\"${sep}\\"${REDACTED}\\"` : m),
     ],
-    // Kiểu util.inspect / YAML trong câu: key: 'value' | key: value
-    [
-      new RegExp(`(^|[\\s{,(\\[])(${KEY})(\\s*:\\s*)('(?:[^'\\\\]|\\\\.)*'|[^\\s,'"}\\][]+)`, "g"),
-      (m, pre, key, sep, value) =>
-        isSensitiveKey(key) ? `${pre}${key}${sep}${value.charAt(0) === "'" ? `'${REDACTED}'` : REDACTED}` : m,
-    ],
-    // Query string / form: key=value (giá trị tới &, khoảng trắng, # hoặc dấu nháy)
-    [
-      new RegExp(`(^|[?&;\\s,{(\\[])(${KEY})=([^&\\s#"']+)`, "g"),
-      (m, pre, key) => (isSensitiveKey(key) ? `${pre}${key}=${REDACTED}` : m),
-    ],
   ];
+  // Hai dạng dưới không dùng String.replace: một cặp key không nhạy cảm có giá trị dài
+  // (vd a=1;token=x hoặc note: 'password: x') sẽ nuốt mất cặp nhạy cảm phía sau. Ở đây chỉ
+  // tiêu thụ giá trị khi key nhạy cảm; với key thường, lần quét sau bắt đầu ngay sau "key=".
+  const pairScanners = [
+    // Query string / form: key=value, giá trị tới &, khoảng trắng, # hoặc dấu nháy
+    {
+      re: new RegExp(`(^|[?&;\\s,{(\\['"])(${KEY})=`, "g"),
+      read: (text, start) => scanUntil(text, start, "&#\"'"),
+      render: () => REDACTED,
+    },
+    // Kiểu util.inspect / YAML trong câu: key: 'value' | key: value
+    {
+      re: new RegExp(`(^|[\\s{,(\\['"])(${KEY})\\s*:\\s*`, "g"),
+      read: (text, start) =>
+        text.charAt(start) === "'" ? scanQuoted(text, start) : scanUntil(text, start, ",'\"}][", true),
+      render: (text, start) => (text.charAt(start) === "'" ? `'${REDACTED}'` : REDACTED),
+    },
+  ];
+
+  function redactPairs(text, scanner) {
+    const re = scanner.re;
+    re.lastIndex = 0;
+    let out = "";
+    let copied = 0;
+    let match;
+    while ((match = re.exec(text)) !== null) {
+      if (!isSensitiveKey(match[2])) continue;
+      const start = re.lastIndex;
+      const end = scanner.read(text, start);
+      if (end <= start) continue;
+      out += text.slice(copied, start) + scanner.render(text, start);
+      copied = end;
+      re.lastIndex = end;
+    }
+    return copied === 0 ? text : out + text.slice(copied);
+  }
+
   return function redactText(text) {
     if (typeof text !== "string" || text === "") return text;
     let out = text;
@@ -111,8 +164,34 @@ function createTextRedactor(isSensitiveKey) {
       pattern.lastIndex = 0;
       out = out.replace(pattern, replace);
     }
+    for (const scanner of pairScanners) out = redactPairs(out, scanner);
     return out;
   };
+}
+
+// Vị trí kết thúc giá trị: tới khoảng trắng hoặc một ký tự trong stops
+// (bareStart: giá trị trần không được bắt đầu bằng '[' để không che lại "[REDACTED]")
+function scanUntil(text, start, stops, bareStart) {
+  if (bareStart && text.charAt(start) === "[") return start;
+  let end = start;
+  while (end < text.length) {
+    const ch = text.charAt(end);
+    if (stops.indexOf(ch) !== -1 || /\s/.test(ch)) break;
+    end++;
+  }
+  return end;
+}
+
+// Vị trí ngay sau dấu nháy đơn đóng (bỏ qua ký tự escape); không đóng thì tới hết chuỗi
+function scanQuoted(text, start) {
+  let end = start + 1;
+  while (end < text.length) {
+    const ch = text.charAt(end);
+    if (ch === "\\") end += 2;
+    else if (ch === "'") return end + 1;
+    else end++;
+  }
+  return text.length;
 }
 
 const redactSecretsInText = createTextRedactor(createKeyMatcher());
