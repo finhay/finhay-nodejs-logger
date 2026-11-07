@@ -147,10 +147,13 @@ function coerce(name, value, stringify) {
 function setRegistered(record, name, value, stringify) {
   if (value === undefined || value === null || value === "") return;
   const coerced = coerce(name, value, stringify);
+  // Giá trị sau (vd của lời gọi) thay hẳn giá trị trước (vd của child): xoá bản kia
   if (coerced !== undefined) {
     record[name] = coerced;
+    delete record[name + INVALID_SUFFIX];
   } else {
     record[name + INVALID_SUFFIX] = typeof value === "object" ? stringify(value) : String(value);
+    delete record[name];
   }
 }
 

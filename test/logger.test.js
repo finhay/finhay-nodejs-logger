@@ -592,3 +592,22 @@ test("escaped quote inside a serialized secret does not end the value early", as
   const backslash = await one((l) => l.info("m", { note: 'cfg token="a\\\\" user="u"' }));
   assert.equal(JSON.parse(backslash.message.slice(2)).note, 'cfg token="[REDACTED]" user="u"');
 });
+
+test("call field replaces child field, valid or invalid", async () => {
+  const a = await one((l) => l.child({ httpStatusCode: 200 }).info("x", { httpStatusCode: "unknown" }));
+  assert.equal("http_status_code" in a, false);
+  assert.equal(a.http_status_code_invalid, "unknown");
+  const b = await one((l) => l.child({ httpStatusCode: "unknown" }).info("x", { httpStatusCode: 201 }));
+  assert.equal(b.http_status_code, 201);
+  assert.equal("http_status_code_invalid" in b, false);
+});
+
+test("long service name is capped", async () => {
+  const ctx = setup({ service: "s".repeat(20000) });
+  ctx.logger.info("x");
+  await flush();
+  assert.ok(Buffer.byteLength(ctx.lines[0]) <= 16000);
+  const entry = JSON.parse(ctx.lines[0]);
+  assert.ok(Buffer.byteLength(entry.service) < 300);
+  assert.ok(validate(entry), JSON.stringify(validate.errors));
+});

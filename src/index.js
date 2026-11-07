@@ -30,6 +30,7 @@ const DEFAULT_MAX_STACK_BYTES = 4 * 1024;
 // Giới hạn cho cả dòng JSON (Docker cắt ở 16384 byte), chừa chỗ cho xuống dòng
 const DEFAULT_MAX_LINE_BYTES = 16000;
 const MAX_REQUEST_ID_BYTES = 256;
+const MAX_SERVICE_BYTES = 256;
 
 const TOKEN = /%[sdifjoOc%]/g;
 
@@ -208,7 +209,11 @@ function createLogger(options) {
   const opts = options || {};
   const env = process.env;
   const format = resolveFormat(opts, env);
-  const service = opts.service || env.OTEL_SERVICE_NAME || env.SERVICE_NAME || env.npm_package_name || "unknown";
+  // Cấu hình nhưng vẫn giới hạn độ dài để không phá giới hạn dòng
+  const service = finalize(
+    String(opts.service || env.OTEL_SERVICE_NAME || env.SERVICE_NAME || env.npm_package_name || "unknown"),
+    MAX_SERVICE_BYTES
+  );
   const environment = schema.resolveEnvironment(opts.environment || env.NODE_ENV);
   const maxMessageBytes = Number(opts.maxMessageBytes || env.LOG_MAX_MESSAGE_BYTES) || DEFAULT_MAX_MESSAGE_BYTES;
   const maxStackBytes = Number(opts.maxStackBytes || env.LOG_MAX_STACK_BYTES) || DEFAULT_MAX_STACK_BYTES;
