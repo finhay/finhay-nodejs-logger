@@ -739,3 +739,11 @@ test("log() with throwing getters or proxies does not throw", async () => {
   assert.equal(entries.length, 4);
   for (const entry of entries) assert.ok(validate(entry), JSON.stringify(validate.errors));
 });
+
+test("JSON keys spelled with escapes are decoded before matching", () => {
+  const { redactSecretsInText } = require("../src");
+  const plain = '{"pass\\u0077ord":"secret","to\\"ken":"s","a":"b"}';
+  assert.equal(redactSecretsInText(plain), '{"pass\\u0077ord":"[REDACTED]","to\\"ken":"[REDACTED]","a":"b"}');
+  const escaped = 'm {\\"pass\\\\u0077ord\\":\\"secret\\",\\"a\\":\\"b\\"}';
+  assert.equal(redactSecretsInText(escaped), 'm {\\"pass\\\\u0077ord\\":\\"[REDACTED]\\",\\"a\\":\\"b\\"}');
+});

@@ -97,9 +97,25 @@ function createKeyMatcher(extraKeys) {
 // để che theo chuỗi và che theo object dùng chung một luật (kể cả key thêm qua
 // LOG_REDACT_KEYS). Tên key giới hạn 64 ký tự để regex vẫn tuyến tính.
 const KEY = "[A-Za-z_][A-Za-z0-9_.-]{0,63}";
-// Key trong JSON có thể chứa khoảng trắng, bắt đầu bằng số... ("api key", "2fa_token"):
-// nhận mọi ký tự trừ nháy và \\, tối đa 256 ký tự (vẫn tuyến tính).
-const JSON_KEY = '[^"\\\\\\r\\n]{1,256}';
+// Key trong JSON có thể chứa khoảng trắng, bắt đầu bằng số... ("api key", "2fa_token") và
+// chuỗi escape ("pass\u0077ord"): nhận mọi ký tự trừ nháy/xuống dòng, cho phép cặp escape,
+// tối đa 256 ký tự (vẫn tuyến tính). Key được giải escape trước khi kiểm tra.
+const JSON_KEY = String.raw`(?:[^"\\\r\n]|\\[^\r\n]){1,256}`;
+// Trong JSON đã escape một lần, escape của key thành "\\\\" (vd pass\\u0077ord)
+const ESCAPED_JSON_KEY = String.raw`(?:[^"\\\r\n]|\\\\){1,256}`;
+
+// Giải tối đa 2 lớp escape JSON của tên key; lỗi thì giữ nguyên
+function decodeJsonKey(raw) {
+  let key = raw;
+  for (let i = 0; i < 2 && key.indexOf("\\") !== -1; i++) {
+    try {
+      key = JSON.parse(`"${key}"`);
+    } catch (e) {
+      break;
+    }
+  }
+  return key;
+}
 
 function createTextRedactor(isSensitiveKey) {
   const patterns = [
@@ -123,6 +139,7 @@ function createTextRedactor(isSensitiveKey) {
     // Chuỗi/object chưa đóng (bị cắt độ dài) được che tới hết.
     {
       re: new RegExp(`(")(${JSON_KEY})"\\s*:\\s*(?=["\\[{\\-\\d])`, "g"),
+      decode: decodeJsonKey,
       read: (text, start) => {
         const ch = text.charAt(start);
         if (ch === '"') return scanQuoted(text, start);
@@ -133,7 +150,8 @@ function createTextRedactor(isSensitiveKey) {
     },
     // Như trên nhưng JSON đã escape một lần: \"key\":\"...\" | \"key\": {...}
     {
-      re: new RegExp(`(\\\\")(${JSON_KEY})\\\\"\\s*:\\s*(?=\\\\"|[\\[{\\-\\d])`, "g"),
+      re: new RegExp(`(\\\\")(${ESCAPED_JSON_KEY})\\\\"\\s*:\\s*(?=\\\\"|[\\[{\\-\\d])`, "g"),
+      decode: decodeJsonKey,
       read: (text, start) => {
         const ch = text.charAt(start);
         if (ch === "\\") return scanEscapedQuoted(text, start);
@@ -165,7 +183,7 @@ function createTextRedactor(isSensitiveKey) {
     let copied = 0;
     let match;
     while ((match = re.exec(text)) !== null) {
-      if (!isSensitiveKey(match[2])) {
+      if (!isSensitiveKey(scanner.decode ? scanner.decode(match[2]) : match[2])) {
         // Key thường: quét tiếp từ ngay sau tên key, để dấu phân cách / khoảng trắng phía
         // sau vẫn làm tiền tố cho cặp kế tiếp (vd "a = token=x", "a: password: x")
         re.lastIndex = match.index + match[1].length + match[2].length;
