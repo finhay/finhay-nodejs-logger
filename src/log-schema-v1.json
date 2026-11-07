@@ -1,7 +1,7 @@
 {
   "$schema": "http://json-schema.org/draft-07/schema#",
   "type": "object",
-  "required": ["schema_version", "timestamp", "level", "service", "environment", "message"],
+  "required": ["schema_version", "timestamp", "level", "service", "message"],
   "propertyNames": { "pattern": "^[a-z][a-z0-9_]*$" },
   "dependencies": { "span_id": ["trace_id"] },
   "properties": {

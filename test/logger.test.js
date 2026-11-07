@@ -488,3 +488,24 @@ test("schema string fields set by callers are redacted and size-capped", async (
   // id dạng số không bị che như SĐT
   assert.equal(entry.user_id, "0912345678");
 });
+
+test("environment is optional in the schema when NODE_ENV is unknown", async () => {
+  const ctx = setup({ environment: "qa" });
+  ctx.logger.info("x");
+  const [entry] = await ctx.entries();
+  assert.equal("environment" in entry, false);
+  assert.ok(validate(entry), JSON.stringify(validate.errors));
+});
+
+test("whole JSON line stays under the line limit", async () => {
+  const ctx = setup({ maxLineBytes: 16000 });
+  const long = 'line "quoted"\n\t'.repeat(2000); // nhiều ký tự escape
+  const err = new Error(long);
+  ctx.logger.error(long, err, { targetService: "z".repeat(9000) });
+  await flush();
+  assert.equal(ctx.lines.length, 1);
+  assert.ok(Buffer.byteLength(ctx.lines[0]) <= 16000, `line is ${Buffer.byteLength(ctx.lines[0])} bytes`);
+  const entry = JSON.parse(ctx.lines[0]);
+  assert.ok(validate(entry), JSON.stringify(validate.errors));
+  assert.match(entry.error_stack, /^Error: line/);
+});

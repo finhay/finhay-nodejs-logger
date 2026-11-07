@@ -27,6 +27,8 @@ const TRACE = Symbol("finhay-logger.trace");
 // thành nhiều bản ghi, làm hỏng JSON. Giữ cả dòng dưới ngưỡng đó.
 const DEFAULT_MAX_MESSAGE_BYTES = 8 * 1024;
 const DEFAULT_MAX_STACK_BYTES = 4 * 1024;
+// Giới hạn cho cả dòng JSON (Docker cắt ở 16384 byte), chừa chỗ cho xuống dòng
+const DEFAULT_MAX_LINE_BYTES = 16000;
 
 const TOKEN = /%[sdifjoOc%]/g;
 
@@ -62,7 +64,7 @@ function stringify(value, replacer) {
 // phải chạy trên hàng MB; che trước khi cắt để không để lại nửa token chưa bị che.
 function finalize(text, maxBytes, scrub) {
   if (typeof text !== "string") return text;
-  const limit = maxBytes || Infinity;
+  const limit = typeof maxBytes === "number" && maxBytes >= 0 ? maxBytes : Infinity;
   const capped = text.length > limit * 4 ? text.slice(0, limit * 4) : text;
   const clean = scrub ? scrub(capped) : capped;
   if (capped === text && Buffer.byteLength(clean) <= limit) return clean;
@@ -209,6 +211,7 @@ function createLogger(options) {
   const environment = schema.resolveEnvironment(opts.environment || env.NODE_ENV);
   const maxMessageBytes = Number(opts.maxMessageBytes || env.LOG_MAX_MESSAGE_BYTES) || DEFAULT_MAX_MESSAGE_BYTES;
   const maxStackBytes = Number(opts.maxStackBytes || env.LOG_MAX_STACK_BYTES) || DEFAULT_MAX_STACK_BYTES;
+  const maxLineBytes = Number(opts.maxLineBytes || env.LOG_MAX_LINE_BYTES) || DEFAULT_MAX_LINE_BYTES;
 
   // Che credential luôn bật (tắt được bằng option redact: false, chỉ nên dùng cho test);
   // che SĐT/email chỉ khi bật maskPii / LOG_MASK_PII=true.
@@ -320,9 +323,37 @@ function createLogger(options) {
           return info;
         })
       : winston.format((info) => {
-          info[MESSAGE] = stringify(toRecord(info));
+          info[MESSAGE] = fitLine(toRecord(info));
           return info;
         });
+
+  // Giới hạn từng field chưa đủ: message, error_message, error_stack có thể cùng chứa một
+  // nội dung dài, cộng thêm ký tự escape của JSON. Nếu cả dòng vượt maxLineBytes thì cắt
+  // tiếp field chuỗi lớn nhất cho tới khi vừa.
+  function fitLine(record) {
+    let line = stringify(record);
+    for (let i = 0; i < 10; i++) {
+      const size = Buffer.byteLength(line);
+      if (size <= maxLineBytes) return line;
+      let largest;
+      let largestSize = 0;
+      for (const key of Object.keys(record)) {
+        if (UNTOUCHED_FIELDS.has(key) || typeof record[key] !== "string") continue;
+        const fieldSize = Buffer.byteLength(JSON.stringify(record[key]));
+        if (fieldSize > largestSize) {
+          largest = key;
+          largestSize = fieldSize;
+        }
+      }
+      if (!largest || largestSize <= 64) break;
+      // Tỉ lệ byte thô / byte sau escape để cắt đủ ngay cả khi chuỗi nhiều ký tự escape
+      const raw = Buffer.byteLength(record[largest]);
+      const target = Math.max(Math.floor((raw * (largestSize - (size - maxLineBytes) - 64)) / largestSize), 0);
+      record[largest] = finalize(record[largest], target);
+      line = stringify(record);
+    }
+    return line;
+  }
 
   const logger = winston.createLogger({
     level: opts.level || env.LOG_LEVEL || "info",
