@@ -139,6 +139,18 @@ function createTextRedactor(isSensitiveKey) {
       read: (text, start) => readValue(text, start, ",'\"}]"),
       render: renderValue,
     },
+    // JSON có giá trị là object/mảng: "password": {...} | "token": [...]
+    {
+      re: new RegExp(`(")(${KEY})"\\s*:\\s*(?=[\\[{])`, "g"),
+      read: (text, start) => scanContainer(text, start, false),
+      render: () => `"${REDACTED}"`,
+    },
+    // Như trên nhưng JSON đã escape một lần: \"password\": {...}
+    {
+      re: new RegExp(`(\\\\")(${KEY})\\\\"\\s*:\\s*(?=[\\[{])`, "g"),
+      read: (text, start) => scanContainer(text, start, true),
+      render: () => `\\"${REDACTED}\\"`,
+    },
   ];
 
   function redactPairs(text, scanner) {
@@ -235,6 +247,35 @@ function scanEscapedQuoted(text, start) {
       backslashes = 0;
     }
     i += 2;
+  }
+  return text.length;
+}
+
+// Vị trí ngay sau dấu đóng của object/mảng JSON bắt đầu tại start (bỏ qua ngoặc nằm
+// trong chuỗi); không đóng (vd bị cắt) thì tới hết chuỗi. escaped: chuỗi dùng \" làm nháy.
+function scanContainer(text, start, escaped) {
+  let depth = 0;
+  let i = start;
+  while (i < text.length) {
+    const ch = text.charAt(i);
+    if (!escaped && ch === '"') {
+      i = scanQuoted(text, i);
+      continue;
+    }
+    if (escaped && ch === "\\" && text.charAt(i + 1) === '"') {
+      i = scanEscapedQuoted(text, i);
+      continue;
+    }
+    if (escaped && ch === "\\") {
+      i += 2;
+      continue;
+    }
+    if (ch === "{" || ch === "[") depth++;
+    else if (ch === "}" || ch === "]") {
+      depth--;
+      if (depth === 0) return i + 1;
+    }
+    i++;
   }
   return text.length;
 }

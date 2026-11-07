@@ -92,7 +92,7 @@ Helper cho service tự che: `maskPhoneOrEmail(value)`, `maskPii(text)`, `maskUr
 | `OTEL_SERVICE_NAME` / `SERVICE_NAME` | | ra `service` |
 | `LOG_MAX_MESSAGE_BYTES` | `8192` | message và `error_message` dài hơn bị cắt, để cả dòng dưới giới hạn 16 KB của Docker |
 | `LOG_MAX_STACK_BYTES` | `4096` | |
-| `LOG_MAX_LINE_BYTES` | `16000` | giới hạn cả dòng JSON; vượt thì cắt tiếp field chuỗi lớn nhất |
+| `LOG_MAX_LINE_BYTES` | `16000` | giới hạn cả dòng JSON (tối thiểu 1024); vượt thì cắt tiếp field chuỗi lớn nhất |
 | `LOG_MASK_PII` | tắt | `true` để che SĐT/email |
 | `LOG_REDACT_KEYS` | | key cần che thêm, cách nhau bằng dấu phẩy |
 

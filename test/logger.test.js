@@ -644,3 +644,22 @@ test("a non-sensitive key does not swallow the separator before the next pair", 
   assert.equal(redactSecretsInText("a=token=x"), "a=token=[REDACTED]");
   assert.equal(redactSecretsInText("a:secret=x"), "a:secret=[REDACTED]");
 });
+
+test("container-valued JSON credentials are redacted", () => {
+  const { redactSecretsInText } = require("../src");
+  assert.equal(
+    redactSecretsInText('{"password":{"value":"super]secret"},"token":["s1",{"x":"]"}],"a":{"b":1}}'),
+    '{"password":"[REDACTED]","token":"[REDACTED]","a":{"b":1}}'
+  );
+  assert.equal(redactSecretsInText('m {\\"secret\\":{\\"v\\":\\"x}y\\"},\\"a\\":1}'), 'm {\\"secret\\":\\"[REDACTED]\\",\\"a\\":1}');
+  assert.equal(redactSecretsInText('{"token":["unterminated'), '{"token":"[REDACTED]"');
+});
+
+test("minimal fallback respects a small line limit", async () => {
+  const ctx = setup({ maxLineBytes: 512, service: "s".repeat(1000) });
+  rTracer.runWithId(() => ctx.logger.info("m".repeat(5000), { targetService: "t".repeat(5000) }), "r".repeat(1000));
+  await flush();
+  // giới hạn bị kẹp lên tối thiểu 1024 byte
+  assert.ok(Buffer.byteLength(ctx.lines[0]) <= 1024, `line is ${Buffer.byteLength(ctx.lines[0])} bytes`);
+  assert.ok(validate(JSON.parse(ctx.lines[0])), JSON.stringify(validate.errors));
+});

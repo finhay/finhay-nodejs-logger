@@ -31,6 +31,7 @@ const DEFAULT_MAX_STACK_BYTES = 4 * 1024;
 const DEFAULT_MAX_LINE_BYTES = 16000;
 const MAX_REQUEST_ID_BYTES = 256;
 const MAX_SERVICE_BYTES = 256;
+const MIN_LINE_BYTES = 1024;
 
 const TOKEN = /%[sdifjoOc%]/g;
 
@@ -217,7 +218,11 @@ function createLogger(options) {
   const environment = schema.resolveEnvironment(opts.environment || env.NODE_ENV);
   const maxMessageBytes = Number(opts.maxMessageBytes || env.LOG_MAX_MESSAGE_BYTES) || DEFAULT_MAX_MESSAGE_BYTES;
   const maxStackBytes = Number(opts.maxStackBytes || env.LOG_MAX_STACK_BYTES) || DEFAULT_MAX_STACK_BYTES;
-  const maxLineBytes = Number(opts.maxLineBytes || env.LOG_MAX_LINE_BYTES) || DEFAULT_MAX_LINE_BYTES;
+  // Không cho nhỏ hơn MIN_LINE_BYTES: field lõi (service, request_id... đã bị giới hạn) phải luôn vừa
+  const maxLineBytes = Math.max(
+    Number(opts.maxLineBytes || env.LOG_MAX_LINE_BYTES) || DEFAULT_MAX_LINE_BYTES,
+    MIN_LINE_BYTES
+  );
 
   // Che credential luôn bật (tắt được bằng option redact: false, chỉ nên dùng cho test);
   // che SĐT/email chỉ khi bật maskPii / LOG_MASK_PII=true.
@@ -383,8 +388,16 @@ function createLogger(options) {
     for (const key of Object.keys(record)) {
       if (UNTOUCHED_FIELDS.has(key)) minimal[key] = record[key];
     }
-    minimal.message = finalize(String(record.message || ""), Math.max(maxLineBytes - Buffer.byteLength(stringify(minimal)) - 128, 0));
+    minimal.message = "";
     minimal.log_truncated = true;
+    // Vẫn không vừa thì bỏ dần field lõi không bắt buộc
+    for (const optional of ["span_id", "trace_id", "request_id", "environment"]) {
+      if (Buffer.byteLength(stringify(minimal)) <= maxLineBytes) break;
+      delete minimal[optional];
+    }
+    const budget = maxLineBytes - Buffer.byteLength(stringify(minimal)) - 64;
+    // Chia 6 vì mỗi ký tự có thể thành tới 6 byte sau khi escape JSON (\uXXXX)
+    minimal.message = finalize(String(record.message || ""), Math.max(Math.floor(budget / 6), 0));
     return stringify(minimal);
   }
 
