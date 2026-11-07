@@ -725,3 +725,17 @@ test("bare values stop before an escaped quote and JSON pairs are scanned first"
   );
   assert.equal(redactSecretsInText('x token=abc\\"tail'), 'x token=[REDACTED]\\"tail');
 });
+
+test("log() with throwing getters or proxies does not throw", async () => {
+  const getterLevel = { get level() { throw new Error("level"); } };
+  const throwingMeta = { level: "warn", message: "m", get secret() { throw new Error("meta"); } };
+  const proxy = new Proxy({}, { get() { throw new Error("trap"); }, ownKeys() { throw new Error("trap"); } });
+  const ctx = setup();
+  for (const value of [getterLevel, throwingMeta, proxy]) {
+    assert.doesNotThrow(() => ctx.logger.log(value));
+  }
+  assert.doesNotThrow(() => ctx.logger.stream.write({ toString() { throw new Error("x"); } }));
+  const entries = await ctx.entries();
+  assert.equal(entries.length, 4);
+  for (const entry of entries) assert.ok(validate(entry), JSON.stringify(validate.errors));
+});

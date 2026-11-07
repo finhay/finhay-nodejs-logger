@@ -467,8 +467,12 @@ function createLogger(options) {
   }
 
   function emit(self, level, args) {
-    if (!self.isLevelEnabled(level)) return self;
-    self.write(entryFor(level, args));
+    try {
+      if (!self.isLevelEnabled(level)) return self;
+      self.write(entryFor(level, args));
+    } catch (e) {
+      // Không để lỗi của logger/transport lọt ra code nghiệp vụ
+    }
     return self;
   }
 
@@ -480,22 +484,38 @@ function createLogger(options) {
 
   // log(level, ...args) | log({ level, message, ...meta }) | log(message)
   logger.log = function (first, ...rest) {
-    if (first !== null && typeof first === "object" && !isError(first) && typeof first.level === "string") {
-      const { level, message, ...meta } = first;
-      const args = message === undefined ? [""] : [message];
-      if (Object.keys(meta).length > 0) args.push(meta);
-      return emit(this, this.levels[level] !== undefined ? level : "info", args);
+    let level = "info";
+    let args;
+    // Đọc object/proxy của người gọi có thể ném (getter): giữ cam kết không ném ra ngoài
+    try {
+      if (first !== null && typeof first === "object" && !isError(first) && typeof first.level === "string") {
+        const { level: objectLevel, message, ...meta } = first;
+        args = message === undefined ? [""] : [message];
+        if (Object.keys(meta).length > 0) args.push(meta);
+        level = this.levels[objectLevel] !== undefined ? objectLevel : "info";
+      } else if (typeof first === "string" && this.levels[first] !== undefined) {
+        level = first;
+        args = rest;
+      } else {
+        args = [first].concat(rest);
+      }
+    } catch (e) {
+      level = "info";
+      args = ["[finhay-logger] failed to read log() argument"];
     }
-    if (typeof first === "string" && this.levels[first] !== undefined) {
-      return emit(this, first, rest);
-    }
-    return emit(this, "info", [first, ...rest]);
+    return emit(this, level, args);
   };
 
   // Dùng cho morgan: bỏ xuống dòng ở cuối để không sinh dòng trống.
   logger.stream = {
     write(message) {
-      logger.info(String(message).replace(/\r?\n$/, ""));
+      let text;
+      try {
+        text = String(message).replace(/\r?\n$/, "");
+      } catch (e) {
+        text = "[finhay-logger] failed to read stream message";
+      }
+      logger.info(text);
     },
   };
 
