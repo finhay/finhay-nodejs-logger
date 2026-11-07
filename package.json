@@ -1,16 +1,42 @@
 {
   "name": "@finhay/finhay-logger",
-  "repository": "git://github.com/finhay/finhay-nodejs-logger.git",
-  "version": "0.0.7",
-  "description": "Custom logger with traceid ",
+  "version": "1.0.0",
+  "description": "Winston-based logger writing Log JSON schema v1 (request_id, OpenTelemetry trace) for Finhay Node.js services",
   "main": "src/index.js",
+  "files": [
+    "src"
+  ],
   "scripts": {
-    "test": "echo \"Error: no test specified\" && exit 1"
+    "test": "node --test"
+  },
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/finhay/finhay-nodejs-logger.git"
+  },
+  "publishConfig": {
+    "access": "public",
+    "registry": "https://registry.npmjs.org/"
+  },
+  "engines": {
+    "node": ">=12.17"
   },
   "author": "sontq00787",
   "license": "ISC",
   "dependencies": {
-    "cls-rtracer": "^2.6.0",
+    "cls-rtracer": "^2.6.4",
+    "safe-stable-stringify": "^2.5.0",
     "winston": "^3.7.2"
+  },
+  "peerDependencies": {
+    "@opentelemetry/api": "^1.0.0"
+  },
+  "peerDependenciesMeta": {
+    "@opentelemetry/api": {
+      "optional": true
+    }
+  },
+  "devDependencies": {
+    "@opentelemetry/api": "^1.10.0",
+    "ajv": "^8.20.0"
   }
 }
