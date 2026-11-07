@@ -207,10 +207,31 @@ function isEscapedQuote(text, start) {
   return text.charAt(start) === "\\" && isQuote(text.charAt(start + 1));
 }
 
-// Vị trí ngay sau cặp nháy escape đóng cùng loại; không đóng thì tới hết chuỗi
+// Vị trí ngay sau cặp nháy escape đóng cùng loại; không đóng thì tới hết chuỗi.
+// Chuỗi ở đây đã qua JSON nên mỗi ký tự escape là một cặp "\x". Nháy escape (\") chỉ là
+// nháy đóng khi đứng sau một số chẵn cặp \\ (nếu lẻ thì đó là \" trong giá trị gốc).
 function scanEscapedQuoted(text, start) {
-  const close = text.indexOf(`\\${text.charAt(start + 1)}`, start + 2);
-  return close === -1 ? text.length : close + 2;
+  const quote = text.charAt(start + 1);
+  let backslashes = 0;
+  let i = start + 2;
+  while (i < text.length) {
+    if (text.charAt(i) !== "\\") {
+      backslashes = 0;
+      i++;
+      continue;
+    }
+    const next = text.charAt(i + 1);
+    if (next === "\\") {
+      backslashes++;
+    } else if (next === quote) {
+      if (backslashes % 2 === 0) return i + 2;
+      backslashes = 0;
+    } else {
+      backslashes = 0;
+    }
+    i += 2;
+  }
+  return text.length;
 }
 
 function readValue(text, start, stops, bareStart) {

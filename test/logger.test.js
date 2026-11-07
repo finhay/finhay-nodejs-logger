@@ -584,3 +584,11 @@ test("quoted values inside serialized meta (escaped quotes) are redacted", async
   const { redactSecretsInText } = require("../src");
   assert.equal(redactSecretsInText('x password=\\"unterminated sec'), 'x password=\\"[REDACTED]\\"');
 });
+
+test("escaped quote inside a serialized secret does not end the value early", async () => {
+  const entry = await one((l) => l.info("m", { note: 'cfg password="a\\"b c" user="u"' }));
+  const note = JSON.parse(entry.message.slice(2)).note;
+  assert.equal(note, 'cfg password="[REDACTED]" user="u"');
+  const backslash = await one((l) => l.info("m", { note: 'cfg token="a\\\\" user="u"' }));
+  assert.equal(JSON.parse(backslash.message.slice(2)).note, 'cfg token="[REDACTED]" user="u"');
+});
