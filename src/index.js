@@ -310,7 +310,8 @@ function createLogger(options) {
         http_status_code: typeof err.statusCode === "number" ? err.statusCode : response.status,
       };
       for (const name of Object.keys(derived)) {
-        if (!(name in record)) {
+        // Người gọi đã đặt field này (kể cả giá trị sai kiểu ở <tên>_invalid) thì không suy ra
+        if (!(name in record) && !(name + schema.INVALID_SUFFIX in record)) {
           const probe = {};
           schema.setRegistered(probe, name, derived[name], serialize);
           if (probe[name] !== undefined) record[name] = probe[name];

@@ -611,3 +611,11 @@ test("long service name is capped", async () => {
   assert.ok(Buffer.byteLength(entry.service) < 300);
   assert.ok(validate(entry), JSON.stringify(validate.errors));
 });
+
+test("invalid caller field is not overridden by the value derived from the error", async () => {
+  const err = new Error("x");
+  err.statusCode = 503;
+  const entry = await one((l) => l.error("upstream", err, { httpStatusCode: "unknown" }));
+  assert.equal("http_status_code" in entry, false);
+  assert.equal(entry.http_status_code_invalid, "unknown");
+});
