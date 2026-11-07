@@ -663,3 +663,15 @@ test("minimal fallback respects a small line limit", async () => {
   assert.ok(Buffer.byteLength(ctx.lines[0]) <= 1024, `line is ${Buffer.byteLength(ctx.lines[0])} bytes`);
   assert.ok(validate(JSON.parse(ctx.lines[0])), JSON.stringify(validate.errors));
 });
+
+test("request_id from child metadata is normalized, capped and redacted", async () => {
+  const num = await one((l) => l.child({ request_id: 123 }).info("x"));
+  assert.equal(num.request_id, "123");
+  const long = await one((l) => l.child({ request_id: `token=abc ${"r".repeat(5000)}` }).info("x"));
+  assert.ok(Buffer.byteLength(long.request_id) < 300);
+  assert.match(long.request_id, /^token=\[REDACTED\]/);
+  const ctx = setup();
+  rTracer.runWithId(() => ctx.logger.child({ request_id: "child" }).info("x"), "from-tracer");
+  const [entry] = await ctx.entries();
+  assert.equal(entry.request_id, "from-tracer");
+});

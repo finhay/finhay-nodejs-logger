@@ -22,6 +22,7 @@ const MESSAGE = Symbol.for("message");
 const ERROR = Symbol("finhay-logger.error");
 const FIELDS = Symbol("finhay-logger.fields");
 const TRACE = Symbol("finhay-logger.trace");
+const REQUEST_ID = Symbol("finhay-logger.requestId");
 
 // Docker (log driver json-file / fluentd của FireLens) cắt dòng dài hơn 16 KB
 // thành nhiều bản ghi, làm hỏng JSON. Giữ cả dòng dưới ngưỡng đó.
@@ -272,7 +273,13 @@ function createLogger(options) {
     };
     if (environment) record.environment = environment;
     record.message = typeof info.message === "string" ? info.message : toText(info.message, serialize);
-    if (info.request_id) record.request_id = info.request_id;
+    // request_id lấy từ cls-rtracer lúc gọi; chỉ khi không có mới dùng giá trị của
+    // logger.child({ request_id }), và luôn chuẩn hoá thành chuỗi, cắt độ dài, che credential
+    const rid = info[REQUEST_ID] !== undefined ? info[REQUEST_ID] : info.request_id;
+    if (rid !== undefined && rid !== null && rid !== "") {
+      const value = finalize(String(rid), MAX_REQUEST_ID_BYTES, scrubSecrets);
+      if (value) record.request_id = value;
+    }
 
     // Trace lấy lúc gọi; nếu không có thì dùng giá trị instrumentation-winston gắn vào info
     const captured = info[TRACE] || {};
@@ -415,8 +422,8 @@ function createLogger(options) {
     const info = { timestamp: new Date().toISOString(), level, message: "" };
     try {
       const rid = rTracer.id();
-      // request_id có thể lấy từ header X-Request-Id (dữ liệu ngoài): giới hạn độ dài
-      if (rid !== undefined && rid !== null) info.request_id = finalize(String(rid), MAX_REQUEST_ID_BYTES);
+      // Lấy ngay lúc gọi; chuẩn hoá, cắt độ dài và che ở toRecord (giá trị có thể từ header)
+      if (rid !== undefined && rid !== null) info[REQUEST_ID] = rid;
       const span = activeSpanContext();
       if (span) info[TRACE] = schema.traceContext(span.traceId, span.spanId);
       const parsed = parseArgs(args, serialize);
