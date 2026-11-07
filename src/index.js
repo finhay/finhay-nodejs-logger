@@ -236,6 +236,21 @@ function createLogger(options) {
   // credential vì PII sẽ che nhầm id dạng số.
   const FREE_TEXT_FIELDS = new Set(["message", "error_message", "error_stack"]);
   const UNTOUCHED_FIELDS = new Set(["schema_version", "timestamp", "level", "service", "environment", "request_id", "trace_id", "span_id"]);
+  // Field có pattern trong schema: bản bị cắt không còn hợp lệ nên chuyển sang <tên>_invalid
+  const PATTERN_FIELDS = new Set(["event_name", "http_method", "http_route"]);
+
+  // Cắt một field về limit byte; field có pattern bị cắt thì đổi tên thành <tên>_invalid.
+  // Trả về tên field sau khi cắt.
+  function trimField(record, key, limit, scrubFn) {
+    const value = finalize(record[key], limit, scrubFn);
+    if (value === record[key] || !PATTERN_FIELDS.has(key)) {
+      record[key] = value;
+      return key;
+    }
+    delete record[key];
+    record[key + schema.INVALID_SUFFIX] = value;
+    return key + schema.INVALID_SUFFIX;
+  }
 
   // Dựng bản ghi schema v1 từ info (đã qua logger.child nếu có)
   function toRecord(info) {
@@ -304,7 +319,7 @@ function createLogger(options) {
       if (UNTOUCHED_FIELDS.has(key) || typeof record[key] !== "string") continue;
       const freeText = FREE_TEXT_FIELDS.has(key) || key.slice(-schema.INVALID_SUFFIX.length) === schema.INVALID_SUFFIX;
       const limit = key === "error_stack" ? maxStackBytes : maxMessageBytes;
-      record[key] = finalize(record[key], limit, freeText ? scrub : scrubSecrets);
+      trimField(record, key, limit, freeText ? scrub : scrubSecrets);
     }
     return record;
   }
@@ -333,9 +348,9 @@ function createLogger(options) {
   // tiếp field chuỗi lớn nhất cho tới khi vừa.
   function fitLine(record) {
     let line = stringify(record);
-    for (let i = 0; i < 10; i++) {
-      const size = Buffer.byteLength(line);
-      if (size <= maxLineBytes) return line;
+    let size = Buffer.byteLength(line);
+    // Mỗi vòng cắt field lớn nhất; dừng khi vừa hoặc không còn field nào cắt được
+    while (size > maxLineBytes) {
       let largest;
       let largestSize = 0;
       for (const key of Object.keys(record)) {
@@ -350,10 +365,21 @@ function createLogger(options) {
       // Tỉ lệ byte thô / byte sau escape để cắt đủ ngay cả khi chuỗi nhiều ký tự escape
       const raw = Buffer.byteLength(record[largest]);
       const target = Math.max(Math.floor((raw * (largestSize - (size - maxLineBytes) - 64)) / largestSize), 0);
-      record[largest] = finalize(record[largest], target);
+      trimField(record, largest, target);
       line = stringify(record);
+      const next = Buffer.byteLength(line);
+      if (next >= size) break;
+      size = next;
     }
-    return line;
+    if (size <= maxLineBytes) return line;
+    // Vẫn vượt (vd quá nhiều field ngắn): chỉ giữ field lõi và message đã cắt
+    const minimal = {};
+    for (const key of Object.keys(record)) {
+      if (UNTOUCHED_FIELDS.has(key)) minimal[key] = record[key];
+    }
+    minimal.message = finalize(String(record.message || ""), Math.max(maxLineBytes - Buffer.byteLength(stringify(minimal)) - 128, 0));
+    minimal.log_truncated = true;
+    return stringify(minimal);
   }
 
   const logger = winston.createLogger({

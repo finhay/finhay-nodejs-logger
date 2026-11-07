@@ -125,18 +125,19 @@ function createTextRedactor(isSensitiveKey) {
   // (vd a=1;token=x hoặc note: 'password: x') sẽ nuốt mất cặp nhạy cảm phía sau. Ở đây chỉ
   // tiêu thụ giá trị khi key nhạy cảm; với key thường, lần quét sau bắt đầu ngay sau "key=".
   const pairScanners = [
-    // Query string / form: key=value, giá trị tới &, khoảng trắng, # hoặc dấu nháy
+    // Query string / form / config: key=value | key="value" | key='value'
+    // (giá trị trần tới &, khoảng trắng, # hoặc dấu nháy)
     {
       re: new RegExp(`(^|[?&;\\s,{(\\['"])(${KEY})=`, "g"),
-      read: (text, start) => scanUntil(text, start, "&#\"'"),
-      render: () => REDACTED,
+      read: (text, start) => (isQuote(text.charAt(start)) ? scanQuoted(text, start) : scanUntil(text, start, "&#\"'")),
+      render: renderValue,
     },
-    // Kiểu util.inspect / YAML trong câu: key: 'value' | key: value
+    // Kiểu util.inspect / YAML trong câu: key: 'value' | key: "value" | key: value
     {
       re: new RegExp(`(^|[\\s{,(\\['"])(${KEY})\\s*:\\s*`, "g"),
       read: (text, start) =>
-        text.charAt(start) === "'" ? scanQuoted(text, start) : scanUntil(text, start, ",'\"}][", true),
-      render: (text, start) => (text.charAt(start) === "'" ? `'${REDACTED}'` : REDACTED),
+        isQuote(text.charAt(start)) ? scanQuoted(text, start) : scanUntil(text, start, ",'\"}][", true),
+      render: renderValue,
     },
   ];
 
@@ -184,15 +185,28 @@ function scanUntil(text, start, stops, bareStart) {
 }
 
 // Vị trí ngay sau dấu nháy đơn đóng (bỏ qua ký tự escape); không đóng thì tới hết chuỗi
+function isQuote(ch) {
+  return ch === "'" || ch === '"';
+}
+
+// Vị trí ngay sau dấu nháy đóng cùng loại với text[start] (bỏ qua ký tự escape);
+// không đóng (vd bị cắt độ dài) thì tới hết chuỗi
 function scanQuoted(text, start) {
+  const quote = text.charAt(start);
   let end = start + 1;
   while (end < text.length) {
     const ch = text.charAt(end);
     if (ch === "\\") end += 2;
-    else if (ch === "'") return end + 1;
+    else if (ch === quote) return end + 1;
     else end++;
   }
   return text.length;
+}
+
+// Giá trị có nháy thì giữ nháy quanh [REDACTED]
+function renderValue(text, start) {
+  const ch = text.charAt(start);
+  return isQuote(ch) ? `${ch}${REDACTED}${ch}` : REDACTED;
 }
 
 const redactSecretsInText = createTextRedactor(createKeyMatcher());

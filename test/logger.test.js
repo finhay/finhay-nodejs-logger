@@ -556,3 +556,23 @@ test("pre-cut landing after a backslash does not leak the secret", async () => {
     assert.doesNotMatch(entry.message, /\\x\\x/, `pad ${pad}`);
   }
 });
+
+test("quoted key=value and key: \"value\" are redacted", () => {
+  const { redactSecretsInText } = require("../src");
+  assert.equal(
+    redactSecretsInText(`cfg password="se cret" token='abc' user="a" pin: "1234" note: "ok"`),
+    `cfg password="[REDACTED]" token='[REDACTED]' user="a" pin: "[REDACTED]" note: "ok"`
+  );
+  assert.equal(redactSecretsInText('x password="unterminated sec'), 'x password="[REDACTED]"');
+});
+
+test("line fitting continues until the record fits", async () => {
+  const ctx = setup({ maxLineBytes: 16000 });
+  const meta = {};
+  const names = ["eventName", "targetService", "messagingSystem", "messagingDestination", "messageId", "jobName", "jobRunId", "errorCode", "logger", "serviceVersion", "userId", "accountId", "subAccountId", "orderId", "transactionId", "requestId"];
+  for (const name of names) meta[name] = "v".repeat(8000);
+  ctx.logger.error("m".repeat(8000), new Error("e".repeat(8000)), meta);
+  await flush();
+  assert.ok(Buffer.byteLength(ctx.lines[0]) <= 16000, `line is ${Buffer.byteLength(ctx.lines[0])} bytes`);
+  assert.ok(validate(JSON.parse(ctx.lines[0])), JSON.stringify(validate.errors));
+});
