@@ -747,3 +747,12 @@ test("JSON keys spelled with escapes are decoded before matching", () => {
   const escaped = 'm {\\"pass\\\\u0077ord\\":\\"secret\\",\\"a\\":\\"b\\"}';
   assert.equal(redactSecretsInText(escaped), 'm {\\"pass\\\\u0077ord\\":\\"[REDACTED]\\",\\"a\\":\\"b\\"}');
 });
+
+test("escaped quote inside an escaped JSON key is handled", () => {
+  const { redactSecretsInText } = require("../src");
+  const text = 'm {\\"to\\\\\\"ken\\":\\"secret\\",\\"a\\\\\\\\\\":\\"b\\"}';
+  assert.equal(redactSecretsInText(text), 'm {\\"to\\\\\\"ken\\":\\"[REDACTED]\\",\\"a\\\\\\\\\\":\\"b\\"}');
+  // dạng này đúng là JSON của JSON
+  const nested = JSON.stringify(JSON.stringify({ 'to"ken': "secret", "a\\": "b" }));
+  assert.doesNotMatch(redactSecretsInText(nested), /secret/);
+});

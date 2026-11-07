@@ -102,7 +102,8 @@ const KEY = "[A-Za-z_][A-Za-z0-9_.-]{0,63}";
 // tối đa 256 ký tự (vẫn tuyến tính). Key được giải escape trước khi kiểm tra.
 const JSON_KEY = String.raw`(?:[^"\\\r\n]|\\[^\r\n]){1,256}`;
 // Trong JSON đã escape một lần, escape của key thành "\\\\" (vd pass\\u0077ord)
-const ESCAPED_JSON_KEY = String.raw`(?:[^"\\\r\n]|\\\\){1,256}`;
+// Nháy nằm trong key (to\"ken) khi escape thêm một lần thành ba dấu gạch ngược rồi nháy
+const ESCAPED_JSON_KEY = String.raw`(?:[^"\\\r\n]|\\\\\\"|\\\\){1,256}`;
 
 // Giải tối đa 2 lớp escape JSON của tên key; lỗi thì giữ nguyên
 function decodeJsonKey(raw) {
