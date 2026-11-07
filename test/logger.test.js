@@ -627,3 +627,20 @@ test("assignments with whitespace around = are redacted", () => {
     'cfg password = "[REDACTED]" token\t=\t[REDACTED] user = "u" pin=[REDACTED]'
   );
 });
+
+test("tail after an already-redacted value is redacted too", () => {
+  const { redactSecretsInText } = require("../src");
+  assert.equal(
+    redactSecretsInText("token=eyJhbGciOiJIUzI1NiJ9.eyJzdWIiOiIxIn0.c2ln!tail&x=1"),
+    "token=[REDACTED]&x=1"
+  );
+  assert.equal(redactSecretsInText("x pin: [REDACTED] ok"), "x pin: [REDACTED] ok");
+});
+
+test("a non-sensitive key does not swallow the separator before the next pair", () => {
+  const { redactSecretsInText } = require("../src");
+  assert.equal(redactSecretsInText("a = token=x"), "a = token=[REDACTED]");
+  assert.equal(redactSecretsInText("a: password: x"), "a: password: [REDACTED]");
+  assert.equal(redactSecretsInText("a=token=x"), "a=token=[REDACTED]");
+  assert.equal(redactSecretsInText("a:secret=x"), "a:secret=[REDACTED]");
+});

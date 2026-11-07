@@ -129,14 +129,14 @@ function createTextRedactor(isSensitiveKey) {
     // (cho phép khoảng trắng quanh "=" nhưng không qua dòng; giá trị trần tới &,
     // khoảng trắng, # hoặc dấu nháy)
     {
-      re: new RegExp(`(^|[?&;\\s,{(\\['"])(${KEY})[ \\t]*=[ \\t]*`, "g"),
-      read: (text, start) => readValue(text, start, "&#\"'", false),
+      re: new RegExp(`(^|[?&;\\s,{(\\['"=:])(${KEY})[ \\t]*=[ \\t]*`, "g"),
+      read: (text, start) => readValue(text, start, "&#\"'"),
       render: renderValue,
     },
     // Kiểu util.inspect / YAML trong câu: key: 'value' | key: "value" | key: value
     {
-      re: new RegExp(`(^|[\\s{,(\\['"])(${KEY})\\s*:\\s*`, "g"),
-      read: (text, start) => readValue(text, start, ",'\"}][", true),
+      re: new RegExp(`(^|[\\s{,(\\['"=:])(${KEY})\\s*:\\s*`, "g"),
+      read: (text, start) => readValue(text, start, ",'\"}]"),
       render: renderValue,
     },
   ];
@@ -148,7 +148,12 @@ function createTextRedactor(isSensitiveKey) {
     let copied = 0;
     let match;
     while ((match = re.exec(text)) !== null) {
-      if (!isSensitiveKey(match[2])) continue;
+      if (!isSensitiveKey(match[2])) {
+        // Key thường: quét tiếp từ ngay sau tên key, để dấu phân cách / khoảng trắng phía
+        // sau vẫn làm tiền tố cho cặp kế tiếp (vd "a = token=x", "a: password: x")
+        re.lastIndex = match.index + match[1].length + match[2].length;
+        continue;
+      }
       const start = re.lastIndex;
       const end = scanner.read(text, start);
       if (end <= start) continue;
@@ -173,8 +178,7 @@ function createTextRedactor(isSensitiveKey) {
 
 // Vị trí kết thúc giá trị: tới khoảng trắng hoặc một ký tự trong stops
 // (bareStart: giá trị trần không được bắt đầu bằng '[' để không che lại "[REDACTED]")
-function scanUntil(text, start, stops, bareStart) {
-  if (bareStart && text.charAt(start) === "[") return start;
+function scanUntil(text, start, stops) {
   let end = start;
   while (end < text.length) {
     const ch = text.charAt(end);
@@ -235,12 +239,17 @@ function scanEscapedQuoted(text, start) {
   return text.length;
 }
 
-function readValue(text, start, stops, bareStart) {
-  // Đã được mẫu khác che rồi thì bỏ qua để không che chồng
-  if (text.startsWith(REDACTED, start)) return start;
+function readValue(text, start, stops) {
+  // Giá trị đã được mẫu khác che (vd JWT): chỉ bỏ qua khi đúng là "[REDACTED]" rồi tới
+  // ký tự dừng; còn phần đuôi (vd "[REDACTED]!tail") thì che cả đoạn.
+  if (text.startsWith(REDACTED, start)) {
+    const after = start + REDACTED.length;
+    const end = scanUntil(text, after, stops);
+    return end === after ? start : end;
+  }
   if (isQuote(text.charAt(start))) return scanQuoted(text, start);
   if (isEscapedQuote(text, start)) return scanEscapedQuoted(text, start);
-  return scanUntil(text, start, stops, bareStart);
+  return scanUntil(text, start, stops);
 }
 
 // Giá trị có nháy (kể cả nháy escape) thì giữ nháy quanh [REDACTED]
