@@ -716,3 +716,12 @@ test("secrets in exceptions thrown while rendering are not logged", async () => 
   assert.equal(ctx.lines.length, 1);
   assert.doesNotMatch(ctx.lines[0], /secret/);
 });
+
+test("bare values stop before an escaped quote and JSON pairs are scanned first", () => {
+  const { redactSecretsInText } = require("../src");
+  assert.equal(
+    redactSecretsInText('{\\"q\\":\\"token=x\\",\\"password\\":\\"s\\"}'),
+    '{\\"q\\":\\"token=[REDACTED]\\",\\"password\\":\\"[REDACTED]\\"}'
+  );
+  assert.equal(redactSecretsInText('x token=abc\\"tail'), 'x token=[REDACTED]\\"tail');
+});

@@ -116,21 +116,8 @@ function createTextRedactor(isSensitiveKey) {
   // Hai dạng dưới không dùng String.replace: một cặp key không nhạy cảm có giá trị dài
   // (vd a=1;token=x hoặc note: 'password: x') sẽ nuốt mất cặp nhạy cảm phía sau. Ở đây chỉ
   // tiêu thụ giá trị khi key nhạy cảm; với key thường, lần quét sau bắt đầu ngay sau "key=".
+  // Thứ tự: JSON trước, để các dạng key=value / key: value không cắt ngang chuỗi JSON
   const pairScanners = [
-    // Query string / form / config: key=value | key = "value" | key='value'
-    // (cho phép khoảng trắng quanh "=" nhưng không qua dòng; giá trị trần tới &,
-    // khoảng trắng, # hoặc dấu nháy)
-    {
-      re: new RegExp(`(^|[?&;\\s,{(\\['"=:])(${KEY})[ \\t]*=[ \\t]*`, "g"),
-      read: (text, start) => readValue(text, start, "&#\"'"),
-      render: renderValue,
-    },
-    // Kiểu util.inspect / YAML trong câu: key: 'value' | key: "value" | key: value
-    {
-      re: new RegExp(`(^|[\\s{,(\\['"=:])(${KEY})\\s*:\\s*`, "g"),
-      read: (text, start) => readValue(text, start, ",'\"}]"),
-      render: renderValue,
-    },
     // JSON trong chuỗi: "key": "..." | số | {...} | [...]. Quét như các dạng trên để một cặp
     // key thường (key JSON có thể chứa khoảng trắng...) không nuốt mất cặp nhạy cảm phía sau.
     // Chuỗi/object chưa đóng (bị cắt độ dài) được che tới hết.
@@ -154,6 +141,20 @@ function createTextRedactor(isSensitiveKey) {
         return scanNumber(text, start);
       },
       render: () => `\\"${REDACTED}\\"`,
+    },
+    // Query string / form / config: key=value | key = "value" | key='value'
+    // (cho phép khoảng trắng quanh "=" nhưng không qua dòng; giá trị trần tới &,
+    // khoảng trắng, # hoặc dấu nháy)
+    {
+      re: new RegExp(`(^|[?&;\\s,{(\\['"=:])(${KEY})[ \\t]*=[ \\t]*`, "g"),
+      read: (text, start) => readValue(text, start, "&#\"'"),
+      render: renderValue,
+    },
+    // Kiểu util.inspect / YAML trong câu: key: 'value' | key: "value" | key: value
+    {
+      re: new RegExp(`(^|[\\s{,(\\['"=:])(${KEY})\\s*:\\s*`, "g"),
+      read: (text, start) => readValue(text, start, ",'\"}]"),
+      render: renderValue,
     },
   ];
 
@@ -199,6 +200,8 @@ function scanUntil(text, start, stops) {
   while (end < text.length) {
     const ch = text.charAt(end);
     if (stops.indexOf(ch) !== -1 || /\s/.test(ch)) break;
+    // Không ăn nửa chuỗi escape \" / \' (giá trị nằm trong JSON đã serialize)
+    if (ch === "\\" && isQuote(text.charAt(end + 1))) break;
     end++;
   }
   return end;
