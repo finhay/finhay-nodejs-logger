@@ -263,6 +263,23 @@ function createLogger(options) {
     return key + schema.INVALID_SUFFIX;
   }
 
+  // Lưới an toàn cuối: format không bao giờ ném vào code gọi
+  function safeRecord(info) {
+    try {
+      return toRecord(info);
+    } catch (e) {
+      const fallback = {
+        schema_version: schema.SCHEMA_VERSION,
+        timestamp: typeof info.timestamp === "string" ? info.timestamp : new Date().toISOString(),
+        level: schema.toLevel(info.level),
+        service,
+      };
+      if (environment) fallback.environment = environment;
+      fallback.message = `[finhay-logger] failed to render log: ${e && e.message}`;
+      return fallback;
+    }
+  }
+
   // Dựng bản ghi schema v1 từ info (đã qua logger.child nếu có)
   function toRecord(info) {
     const record = {
@@ -311,23 +328,28 @@ function createLogger(options) {
 
     // Field suy ra từ Error không đè field người gọi đã đặt
     const err = info[ERROR];
+    // Đọc thuộc tính của Error có thể ném (getter/proxy): không để lỗi lọt ra code gọi
     if (err) {
-      const response = err.response && typeof err.response === "object" ? err.response : {};
-      const code = err.errorCode !== undefined ? err.errorCode : err.code;
-      const derived = {
-        error_type: errorType(err),
-        error_message: err.message,
-        error_stack: errorStack(err),
-        error_code: typeof code === "string" || typeof code === "number" ? code : undefined,
-        http_status_code: typeof err.statusCode === "number" ? err.statusCode : response.status,
-      };
-      for (const name of Object.keys(derived)) {
-        // Người gọi đã đặt field này (kể cả giá trị sai kiểu ở <tên>_invalid) thì không suy ra
-        if (!(name in record) && !(name + schema.INVALID_SUFFIX in record)) {
-          const probe = {};
-          schema.setRegistered(probe, name, derived[name], serialize);
-          if (probe[name] !== undefined) record[name] = probe[name];
+      try {
+        const response = err.response && typeof err.response === "object" ? err.response : {};
+        const code = err.errorCode !== undefined ? err.errorCode : err.code;
+        const derived = {
+          error_type: errorType(err),
+          error_message: err.message,
+          error_stack: errorStack(err),
+          error_code: typeof code === "string" || typeof code === "number" ? code : undefined,
+          http_status_code: typeof err.statusCode === "number" ? err.statusCode : response.status,
+        };
+        for (const name of Object.keys(derived)) {
+          // Người gọi đã đặt field này (kể cả giá trị sai kiểu ở <tên>_invalid) thì không suy ra
+          if (!(name in record) && !(name + schema.INVALID_SUFFIX in record)) {
+            const probe = {};
+            schema.setRegistered(probe, name, derived[name], serialize);
+            if (probe[name] !== undefined) record[name] = probe[name];
+          }
         }
+      } catch (e) {
+        if (!("error_type" in record)) record.error_type = "Error";
       }
     }
 
@@ -345,7 +367,7 @@ function createLogger(options) {
   const render =
     format === "text"
       ? winston.format((info) => {
-          const record = toRecord(info);
+          const record = safeRecord(info);
           const rid = record.request_id ? ` [request-id:${record.request_id}]` : "";
           const extra = {};
           for (const key of Object.keys(record)) {
@@ -357,7 +379,7 @@ function createLogger(options) {
           return info;
         })
       : winston.format((info) => {
-          info[MESSAGE] = fitLine(toRecord(info));
+          info[MESSAGE] = fitLine(safeRecord(info));
           return info;
         });
 

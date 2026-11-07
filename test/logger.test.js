@@ -675,3 +675,25 @@ test("request_id from child metadata is normalized, capped and redacted", async 
   const [entry] = await ctx.entries();
   assert.equal(entry.request_id, "from-tracer");
 });
+
+test("JSON keys outside identifier syntax are redacted", () => {
+  const { redactSecretsInText } = require("../src");
+  assert.equal(
+    redactSecretsInText('{"api key":"s1","2fa_token":"s2","Session Id":{"v":"s3"},"note":"ok"}'),
+    '{"api key":"[REDACTED]","2fa_token":"[REDACTED]","Session Id":"[REDACTED]","note":"ok"}'
+  );
+  const longKey = `${"x".repeat(70)}_password`;
+  assert.equal(redactSecretsInText(`{"${longKey}":"s"}`), `{"${longKey}":"[REDACTED]"}`);
+  assert.equal(redactSecretsInText('{\\"api key\\":\\"s\\"}'), '{\\"api key\\":\\"[REDACTED]\\"}');
+});
+
+test("throwing error getters do not escape the logger", async () => {
+  const err = new Error("boom");
+  Object.defineProperty(err, "response", { get() { throw new Error("getter"); } });
+  Object.defineProperty(err, "code", { get() { throw new Error("getter"); } });
+  const entry = await one((l) => assert.doesNotThrow(() => l.error("x", err)));
+  assert.equal(entry.message, "x");
+  assert.equal(entry.error_type, "Error");
+  const hostile = new Proxy(new Error("p"), { get(target, key) { if (key === "stack" || key === "message") return Reflect.get(target, key); throw new Error("trap"); } });
+  await one((l) => assert.doesNotThrow(() => l.error(hostile)));
+});

@@ -97,6 +97,9 @@ function createKeyMatcher(extraKeys) {
 // để che theo chuỗi và che theo object dùng chung một luật (kể cả key thêm qua
 // LOG_REDACT_KEYS). Tên key giới hạn 64 ký tự để regex vẫn tuyến tính.
 const KEY = "[A-Za-z_][A-Za-z0-9_.-]{0,63}";
+// Key trong JSON có thể chứa khoảng trắng, bắt đầu bằng số... ("api key", "2fa_token"):
+// nhận mọi ký tự trừ nháy và \\, tối đa 256 ký tự (vẫn tuyến tính).
+const JSON_KEY = '[^"\\\\\\r\\n]{1,256}';
 
 function createTextRedactor(isSensitiveKey) {
   const patterns = [
@@ -112,12 +115,12 @@ function createTextRedactor(isSensitiveKey) {
     // JSON trong chuỗi: "key": "..." | số. Chuỗi chưa đóng (bị cắt độ dài, kể cả cắt ngay
     // sau một dấu \) được che tới hết.
     [
-      new RegExp(`"(${KEY})"(\\s*:\\s*)("(?:[^"\\\\]|\\\\.)*(?:"|\\\\?$)|-?\\d+(?:\\.\\d+)?)`, "g"),
+      new RegExp(`"(${JSON_KEY})"(\\s*:\\s*)("(?:[^"\\\\]|\\\\.)*(?:"|\\\\?$)|-?\\d+(?:\\.\\d+)?)`, "g"),
       (m, key, sep) => (isSensitiveKey(key) ? `"${key}"${sep}"${REDACTED}"` : m),
     ],
     // JSON đã escape một lần: \"key\":\"...\"
     [
-      new RegExp(`\\\\"(${KEY})\\\\"(\\s*:\\s*)(\\\\"(?:[^\\\\]|\\\\[^"])*(?:\\\\"|\\\\?$)|-?\\d+)`, "g"),
+      new RegExp(`\\\\"(${JSON_KEY})\\\\"(\\s*:\\s*)(\\\\"(?:[^\\\\]|\\\\[^"])*(?:\\\\"|\\\\?$)|-?\\d+)`, "g"),
       (m, key, sep) => (isSensitiveKey(key) ? `\\"${key}\\"${sep}\\"${REDACTED}\\"` : m),
     ],
   ];
@@ -141,13 +144,13 @@ function createTextRedactor(isSensitiveKey) {
     },
     // JSON có giá trị là object/mảng: "password": {...} | "token": [...]
     {
-      re: new RegExp(`(")(${KEY})"\\s*:\\s*(?=[\\[{])`, "g"),
+      re: new RegExp(`(")(${JSON_KEY})"\\s*:\\s*(?=[\\[{])`, "g"),
       read: (text, start) => scanContainer(text, start, false),
       render: () => `"${REDACTED}"`,
     },
     // Như trên nhưng JSON đã escape một lần: \"password\": {...}
     {
-      re: new RegExp(`(\\\\")(${KEY})\\\\"\\s*:\\s*(?=[\\[{])`, "g"),
+      re: new RegExp(`(\\\\")(${JSON_KEY})\\\\"\\s*:\\s*(?=[\\[{])`, "g"),
       read: (text, start) => scanContainer(text, start, true),
       render: () => `\\"${REDACTED}\\"`,
     },
