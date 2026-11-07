@@ -218,14 +218,20 @@ function createLogger(options) {
   const isSensitiveKey = redactEnabled ? redact.createKeyMatcher(extraKeys) : () => false;
   const replacer = redactEnabled || piiEnabled ? redact.createReplacer(isSensitiveKey, piiEnabled) : undefined;
   const serialize = (value) => stringify(value, replacer);
+  // Che theo chuỗi dùng cùng luật key với che theo object (gồm key thêm qua LOG_REDACT_KEYS)
+  const scrubSecrets = redactEnabled ? redact.createTextRedactor(isSensitiveKey) : undefined;
   const scrub =
     redactEnabled || piiEnabled
       ? (text) => {
-          let out = redactEnabled ? redact.redactSecretsInText(text) : text;
+          let out = scrubSecrets ? scrubSecrets(text) : text;
           if (piiEnabled) out = redact.maskPii(out);
           return out;
         }
       : undefined;
+  // Field văn bản tự do được che cả PII; field định danh (user_id, error_code...) chỉ che
+  // credential vì PII sẽ che nhầm id dạng số.
+  const FREE_TEXT_FIELDS = new Set(["message", "error_message", "error_stack"]);
+  const UNTOUCHED_FIELDS = new Set(["schema_version", "timestamp", "level", "service", "environment", "request_id", "trace_id", "span_id"]);
 
   // Dựng bản ghi schema v1 từ info (đã qua logger.child nếu có)
   function toRecord(info) {
@@ -274,8 +280,8 @@ function createLogger(options) {
       const code = err.errorCode !== undefined ? err.errorCode : err.code;
       const derived = {
         error_type: errorType(err),
-        error_message: finalize(err.message, maxMessageBytes, scrub),
-        error_stack: finalize(errorStack(err), maxStackBytes, scrub),
+        error_message: err.message,
+        error_stack: errorStack(err),
         error_code: typeof code === "string" || typeof code === "number" ? code : undefined,
         http_status_code: typeof err.statusCode === "number" ? err.statusCode : response.status,
       };
@@ -288,12 +294,13 @@ function createLogger(options) {
       }
     }
 
-    record.message = finalize(record.message, maxMessageBytes, scrub);
-    // Giá trị sai kiểu được giữ nguyên văn ở <tên>_invalid nên cũng phải che
+    // Mọi field chuỗi (message, error_*, field schema do người gọi đặt, <tên>_invalid)
+    // đều được che rồi cắt độ dài trước khi ghi
     for (const key of Object.keys(record)) {
-      if (key.slice(-schema.INVALID_SUFFIX.length) === schema.INVALID_SUFFIX) {
-        record[key] = finalize(record[key], maxMessageBytes, scrub);
-      }
+      if (UNTOUCHED_FIELDS.has(key) || typeof record[key] !== "string") continue;
+      const freeText = FREE_TEXT_FIELDS.has(key) || key.slice(-schema.INVALID_SUFFIX.length) === schema.INVALID_SUFFIX;
+      const limit = key === "error_stack" ? maxStackBytes : maxMessageBytes;
+      record[key] = finalize(record[key], limit, freeText ? scrub : scrubSecrets);
     }
     return record;
   }

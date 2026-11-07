@@ -73,7 +73,7 @@ Không cần cấu hình. Logger đọc span active bằng `@opentelemetry/api` 
 **Credential luôn được che** (lớp chặn dự phòng; service vẫn nên tự che trước khi log):
 
 - Theo tên key, ở mọi object logger serialize (meta, tham số `%o/%j`, object log một mình, meta của `child()`): key có từ cuối là `password`, `passwd`, `pwd`, `passcode`, `pin`, `otp`, `secret`, `token`, `cookie`, `authorization`, `cvv`, `cvc`, `jwt`; hai từ cuối là `api key`, `private key`, `secret key`, `access key`, `biometric key`, `pin code`, `otp code`, `card number`, `code verifier`, `session id`; hoặc chứa từ `password`. Giá trị thành `[REDACTED]`, riêng boolean/null giữ nguyên (`otpFound: true`). Ví dụ che: `newPassword`, `accessToken`, `x-api-key`, `transactionPin`; không che: `tokenType`, `otpType`.
-- Theo mẫu trong `message`, `error_message`, `error_stack`, `<tên>_invalid`: `Bearer …`/`Basic …`, chuỗi dạng JWT, query `password=…`/`token=…`/`otp=…`/`api_key=…`, JSON nằm trong chuỗi `"password":"…"` (kể cả đã escape). Che trước khi cắt độ dài.
+- Theo mẫu trong mọi field chuỗi (message, `error_*`, field schema do người gọi đặt, `<tên>_invalid`): `Bearer …`/`Basic …`, chuỗi dạng JWT, và giá trị đứng sau một key nhạy cảm (cùng luật key ở trên, kể cả key thêm) ở các dạng `key=value` (query/form, tới dấu `&`), `"key": "value"` (JSON, kể cả đã escape), `key: 'value'` (util.inspect) và dòng header `Cookie: …` (tới hết dòng). Che trước khi cắt độ dài.
 - Thêm key: `LOG_REDACT_KEYS=cccd,id_number` hoặc option `redactKeys`.
 
 Không bắt được bí mật trong văn bản tự do không có key (vd `` `OTP của bạn là ${otp}` ``).

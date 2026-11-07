@@ -458,3 +458,33 @@ test("redaction stays linear on long inputs", () => {
   maskPii("1 ".repeat(200000));
   assert.ok(Date.now() - start < 1000, `took ${Date.now() - start}ms`);
 });
+
+test("text redaction follows the same key rules, including custom keys", async () => {
+  const entry = await one((l) => l.info('kyc cccd=0123 body {"cccd":"0123","idNumber":9} ok'), { redactKeys: ["cccd", "id_number"] });
+  assert.equal(entry.message, 'kyc cccd=[REDACTED] body {"cccd":"[REDACTED]","idNumber":"[REDACTED]"} ok');
+});
+
+test("query value is redacted up to the next & even with , or ;", async () => {
+  assert.equal((await one((l) => l.info("q password=a,b;c&x=1"))).message, "q password=[REDACTED]&x=1");
+});
+
+test("header-style lines and inspect-style values are redacted", async () => {
+  const entry = await one((l) =>
+    l.info("headers:\nCookie: sid=1; token=2\nX-Api-Key: k\nAccept: */*\n{ password: 'x', user: 'a', accessToken: abc }")
+  );
+  assert.equal(
+    entry.message,
+    "headers:\nCookie: [REDACTED]\nX-Api-Key: [REDACTED]\nAccept: */*\n{ password: '[REDACTED]', user: 'a', accessToken: [REDACTED] }"
+  );
+});
+
+test("schema string fields set by callers are redacted and size-capped", async () => {
+  const entry = await one(
+    (l) => l.error("x", { errorCode: "token=abc", targetService: "y".repeat(500), userId: "0912345678" }),
+    { maxMessageBytes: 100, maskPii: true }
+  );
+  assert.equal(entry.error_code, "token=[REDACTED]");
+  assert.match(entry.target_service, /^y{100}…\[truncated 400 bytes\]$/);
+  // id dạng số không bị che như SĐT
+  assert.equal(entry.user_id, "0912345678");
+});

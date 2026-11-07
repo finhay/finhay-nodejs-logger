@@ -66,34 +66,56 @@ function createKeyMatcher(extraKeys) {
   };
 }
 
-// Key cho mẫu query string / JSON trong chuỗi
-const KEY_ALTERNATION =
-  "(?:new_?|old_?|confirm_?|current_?)?(?:password|passwd|pwd|passcode|pin|pin_?code|otp|otp_?code|" +
-  "token|access_?token|refresh_?token|id_?token|secret|client_?secret|secret_?key|api_?key|" +
-  "authorization|cookie|cvv|code_?verifier|biometric_?key)";
+// Mẫu "key=value", "key": value... nhận mọi tên key rồi quyết định bằng isSensitiveKey,
+// để che theo chuỗi và che theo object dùng chung một luật (kể cả key thêm qua
+// LOG_REDACT_KEYS). Tên key giới hạn 64 ký tự để regex vẫn tuyến tính.
+const KEY = "[A-Za-z_][A-Za-z0-9_.-]{0,63}";
 
-const TEXT_PATTERNS = [
-  // Authorization: Bearer <token> / Basic <base64>
-  [/\b(Bearer|Basic)\s+[A-Za-z0-9\-._~+/]+=*/gi, `$1 ${REDACTED}`],
-  // JWT (header.payload.signature)
-  [/\beyJ[A-Za-z0-9_-]{5,}\.[A-Za-z0-9_-]{5,}\.[A-Za-z0-9_-]*/g, REDACTED],
-  // query string / form: password=...&token=...
-  [new RegExp(`(^|[?&;\\s,])(${KEY_ALTERNATION}=)[^&\\s#"',;]+`, "gi"), `$1$2${REDACTED}`],
-  // JSON trong chuỗi: "password":"..." hoặc "otp":123456
-  [new RegExp(`("${KEY_ALTERNATION}"\\s*:\\s*)(?:"(?:[^"\\\\]|\\\\.)*"|-?\\d+)`, "gi"), `$1"${REDACTED}"`],
-  // JSON đã escape một lần trong chuỗi: \"password\":\"...\"
-  [new RegExp(`(\\\\"${KEY_ALTERNATION}\\\\"\\s*:\\s*)\\\\"(?:[^\\\\]|\\\\[^"])*\\\\"`, "gi"), `$1\\"${REDACTED}\\"`],
-];
-
-function redactSecretsInText(text) {
-  if (typeof text !== "string" || text === "") return text;
-  let out = text;
-  for (const [pattern, replacement] of TEXT_PATTERNS) {
-    pattern.lastIndex = 0;
-    out = out.replace(pattern, replacement);
-  }
-  return out;
+function createTextRedactor(isSensitiveKey) {
+  const patterns = [
+    // Authorization: Bearer <token> / Basic <base64>
+    [/\b(Bearer|Basic)\s+[A-Za-z0-9\-._~+/]+=*/gi, (m, scheme) => `${scheme} ${REDACTED}`],
+    // JWT (header.payload.signature)
+    [/\beyJ[A-Za-z0-9_-]{5,}\.[A-Za-z0-9_-]{5,}\.[A-Za-z0-9_-]*/g, () => REDACTED],
+    // Dòng kiểu header: "Cookie: a=1; b=2" -> che tới hết dòng
+    [
+      new RegExp(`(^|[\\r\\n])([ \\t]*)(${KEY})[ \\t]*:[ \\t]*([^\\r\\n]+)`, "g"),
+      (m, pre, indent, key) => (isSensitiveKey(key) ? `${pre}${indent}${key}: ${REDACTED}` : m),
+    ],
+    // JSON trong chuỗi: "key": "..." | số
+    [
+      new RegExp(`"(${KEY})"(\\s*:\\s*)("(?:[^"\\\\]|\\\\.)*"|-?\\d+(?:\\.\\d+)?)`, "g"),
+      (m, key, sep) => (isSensitiveKey(key) ? `"${key}"${sep}"${REDACTED}"` : m),
+    ],
+    // JSON đã escape một lần: \"key\":\"...\"
+    [
+      new RegExp(`\\\\"(${KEY})\\\\"(\\s*:\\s*)(\\\\"(?:[^\\\\]|\\\\[^"])*\\\\"|-?\\d+)`, "g"),
+      (m, key, sep) => (isSensitiveKey(key) ? `\\"${key}\\"${sep}\\"${REDACTED}\\"` : m),
+    ],
+    // Kiểu util.inspect / YAML trong câu: key: 'value' | key: value
+    [
+      new RegExp(`(^|[\\s{,(\\[])(${KEY})(\\s*:\\s*)('(?:[^'\\\\]|\\\\.)*'|[^\\s,'"}\\][]+)`, "g"),
+      (m, pre, key, sep, value) =>
+        isSensitiveKey(key) ? `${pre}${key}${sep}${value.charAt(0) === "'" ? `'${REDACTED}'` : REDACTED}` : m,
+    ],
+    // Query string / form: key=value (giá trị tới &, khoảng trắng, # hoặc dấu nháy)
+    [
+      new RegExp(`(^|[?&;\\s,{(\\[])(${KEY})=([^&\\s#"']+)`, "g"),
+      (m, pre, key) => (isSensitiveKey(key) ? `${pre}${key}=${REDACTED}` : m),
+    ],
+  ];
+  return function redactText(text) {
+    if (typeof text !== "string" || text === "") return text;
+    let out = text;
+    for (const [pattern, replace] of patterns) {
+      pattern.lastIndex = 0;
+      out = out.replace(pattern, replace);
+    }
+    return out;
+  };
 }
+
+const redactSecretsInText = createTextRedactor(createKeyMatcher());
 
 // ---- PII (chép từ vnsc-auth Util.ts, bản đã hotfix quét email tuyến tính) ----
 
@@ -212,6 +234,7 @@ module.exports = {
   REDACTED,
   createKeyMatcher,
   createReplacer,
+  createTextRedactor,
   redactSecretsInText,
   maskPhoneOrEmail,
   maskPii,
