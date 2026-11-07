@@ -522,3 +522,22 @@ test("a non-sensitive pair does not hide a sensitive pair after it", async () =>
   assert.equal((await one((l) => l.info("a=1,password=x b=2"))).message, "a=1,password=[REDACTED] b=2");
   assert.equal((await one((l) => l.info("note: 'password: x', user: 'a'"))).message, "note: 'password: [REDACTED]', user: 'a'");
 });
+
+test("a secret longer than the pre-cut window is still redacted", async () => {
+  const secret = "s".repeat(40000);
+  const entry = await one((l) => l.info(`{"password":"${secret}","a":1}`));
+  assert.doesNotMatch(entry.message, /sss/);
+  assert.match(entry.message, /^\{"password":"\[REDACTED\]"/);
+  const escaped = await one((l) => l.info(JSON.stringify(JSON.stringify({ token: secret }))));
+  assert.doesNotMatch(escaped.message, /sss/);
+});
+
+test("long request_id from a header is capped", async () => {
+  const ctx = setup();
+  rTracer.runWithId(() => ctx.logger.info("x"), "r".repeat(20000));
+  await flush();
+  assert.ok(Buffer.byteLength(ctx.lines[0]) <= 16000);
+  const [entry] = ctx.lines.map((line) => JSON.parse(line));
+  assert.ok(Buffer.byteLength(entry.request_id) < 300);
+  assert.ok(validate(entry), JSON.stringify(validate.errors));
+});

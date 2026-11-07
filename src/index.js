@@ -29,6 +29,7 @@ const DEFAULT_MAX_MESSAGE_BYTES = 8 * 1024;
 const DEFAULT_MAX_STACK_BYTES = 4 * 1024;
 // Giới hạn cho cả dòng JSON (Docker cắt ở 16384 byte), chừa chỗ cho xuống dòng
 const DEFAULT_MAX_LINE_BYTES = 16000;
+const MAX_REQUEST_ID_BYTES = 256;
 
 const TOKEN = /%[sdifjoOc%]/g;
 
@@ -369,7 +370,8 @@ function createLogger(options) {
     const info = { timestamp: new Date().toISOString(), level, message: "" };
     try {
       const rid = rTracer.id();
-      if (rid !== undefined && rid !== null) info.request_id = String(rid);
+      // request_id có thể lấy từ header X-Request-Id (dữ liệu ngoài): giới hạn độ dài
+      if (rid !== undefined && rid !== null) info.request_id = finalize(String(rid), MAX_REQUEST_ID_BYTES);
       const span = activeSpanContext();
       if (span) info[TRACE] = schema.traceContext(span.traceId, span.spanId);
       const parsed = parseArgs(args, serialize);

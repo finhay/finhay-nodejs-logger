@@ -109,14 +109,14 @@ function createTextRedactor(isSensitiveKey) {
       new RegExp(`(^|[\\r\\n])([ \\t]*)(${KEY})[ \\t]*:[ \\t]*([^\\r\\n]+)`, "g"),
       (m, pre, indent, key) => (isSensitiveKey(key) ? `${pre}${indent}${key}: ${REDACTED}` : m),
     ],
-    // JSON trong chuỗi: "key": "..." | số
+    // JSON trong chuỗi: "key": "..." | số. Chuỗi chưa đóng (bị cắt độ dài) được che tới hết.
     [
-      new RegExp(`"(${KEY})"(\\s*:\\s*)("(?:[^"\\\\]|\\\\.)*"|-?\\d+(?:\\.\\d+)?)`, "g"),
+      new RegExp(`"(${KEY})"(\\s*:\\s*)("(?:[^"\\\\]|\\\\.)*(?:"|$)|-?\\d+(?:\\.\\d+)?)`, "g"),
       (m, key, sep) => (isSensitiveKey(key) ? `"${key}"${sep}"${REDACTED}"` : m),
     ],
     // JSON đã escape một lần: \"key\":\"...\"
     [
-      new RegExp(`\\\\"(${KEY})\\\\"(\\s*:\\s*)(\\\\"(?:[^\\\\]|\\\\[^"])*\\\\"|-?\\d+)`, "g"),
+      new RegExp(`\\\\"(${KEY})\\\\"(\\s*:\\s*)(\\\\"(?:[^\\\\]|\\\\[^"])*(?:\\\\"|$)|-?\\d+)`, "g"),
       (m, key, sep) => (isSensitiveKey(key) ? `\\"${key}\\"${sep}\\"${REDACTED}\\"` : m),
     ],
   ];
