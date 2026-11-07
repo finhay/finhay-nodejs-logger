@@ -706,3 +706,13 @@ test("a broad non-sensitive JSON key does not hide a sensitive pair", () => {
   );
   assert.equal(redactSecretsInText('{"note":"x","otp":123456,"a":1.5e3}'), '{"note":"x","otp":"[REDACTED]","a":1.5e3}');
 });
+
+test("secrets in exceptions thrown while rendering are not logged", async () => {
+  const err = new Error("boom");
+  Object.defineProperty(err, "response", { get() { throw new Error("token=secret"); } });
+  const ctx = setup();
+  ctx.logger.error("x", err);
+  await flush();
+  assert.equal(ctx.lines.length, 1);
+  assert.doesNotMatch(ctx.lines[0], /secret/);
+});
