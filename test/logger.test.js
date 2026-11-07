@@ -541,3 +541,18 @@ test("long request_id from a header is capped", async () => {
   assert.ok(Buffer.byteLength(entry.request_id) < 300);
   assert.ok(validate(entry), JSON.stringify(validate.errors));
 });
+
+test("a cut right after a backslash still redacts the value", () => {
+  const { redactSecretsInText } = require("../src");
+  assert.equal(redactSecretsInText('{"password":"abc\\'), '{"password":"[REDACTED]"');
+  assert.equal(redactSecretsInText('{\\"token\\":\\"abc\\'), '{\\"token\\":\\"[REDACTED]\\"');
+});
+
+// điểm cắt thô của finalize (4 x maxMessageBytes) rơi ở các vị trí khác nhau quanh dấu \
+test("pre-cut landing after a backslash does not leak the secret", async () => {
+  for (const pad of [0, 1, 2, 3]) {
+    const secret = `${"a".repeat(pad)}${"\\x".repeat(20000)}`;
+    const entry = await one((l) => l.info(`{"password":"${secret}"}`), { maxMessageBytes: 1000 });
+    assert.doesNotMatch(entry.message, /\\x\\x/, `pad ${pad}`);
+  }
+});
